@@ -146,18 +146,34 @@ fn rejects_malformed_answers_and_bypasses_short_or_explicit_inputs() {
         )
         .is_err()
     );
-    assert!(has_explicit_skill_selection(&[UserInput::Skill {
-        name: "PDF".to_string(),
-        path: "/skills/pdf/SKILL.md".into(),
-    }]));
-    assert!(has_explicit_skill_selection(&[UserInput::Mention {
-        name: "PDF".to_string(),
-        path: "skill://pdf/SKILL.md".to_string(),
-    }]));
     let text = |text: &str| UserInput::Text {
         text: text.to_string(),
         text_elements: Vec::new(),
     };
+    let pdf = entry("pdf:pdf", "pdf");
+    let entries = [pdf];
+    assert!(has_explicit_skill_selection(
+        &[UserInput::Skill {
+            name: "PDF".to_string(),
+            path: "/skills/pdf/SKILL.md".into(),
+        }],
+        &entries,
+    ));
+    assert!(has_explicit_skill_selection(
+        &[UserInput::Mention {
+            name: "PDF".to_string(),
+            path: "skill://pdf/SKILL.md".to_string(),
+        }],
+        &entries,
+    ));
+    assert!(has_explicit_skill_selection(
+        &[text("Use $pdf for the task")],
+        &entries,
+    ));
+    assert!(!has_explicit_skill_selection(
+        &[text("Use $browser for the task")],
+        &entries,
+    ));
     assert_eq!(substantive_request(&[text("continue")]), None);
     assert_eq!(
         substantive_request(&[text("Review the workbook formulas")]),

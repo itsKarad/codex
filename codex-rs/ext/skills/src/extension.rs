@@ -409,6 +409,10 @@ where
                 self.emit_warning(thread_store.level_id(), Some(&input.turn_id), warning);
             }
 
+            let mut expanded_catalog = catalog.clone();
+            if let Some(host_skills) = &host_skills {
+                expanded_catalog.extend(host_skills.0.clone());
+            }
             let selected_entries = collect_explicit_skill_mentions(&input.user_input, &catalog);
             let mut skill_suggestion_fragment = None;
             if config.jev_skill_selection_enabled
@@ -417,11 +421,9 @@ where
                 let task_context = thread_state
                     .skill_suggestion_history
                     .context_for_turn(&input.turn_id, &request);
-                if !has_explicit_skill_selection(&input.user_input) && selected_entries.is_empty() {
-                    let mut suggestion_catalog = catalog.clone();
-                    if let Some(host_skills) = &host_skills {
-                        suggestion_catalog.extend(host_skills.0.clone());
-                    }
+                if !has_explicit_skill_selection(&input.user_input, &expanded_catalog.entries)
+                    && selected_entries.is_empty()
+                {
                     let api_key = std::env::var("OPENROUTER_API_KEY").ok();
                     let model = std::env::var("OPENROUTER_MODEL").ok();
                     let result = if let Some(selector) = self.jev_skill_selector.as_ref() {
@@ -430,7 +432,7 @@ where
                                 api_key.as_deref(),
                                 Some(configured_model(model.as_deref())),
                                 &task_context,
-                                &suggestion_catalog.entries,
+                                &expanded_catalog.entries,
                             )
                             .await
                     } else {
@@ -467,10 +469,7 @@ where
                 }
             }
             let shadow_selection_turn = if config.shadow_selection_enabled {
-                let mut shadow_catalog = catalog.clone();
-                if let Some(host_skills) = host_skills {
-                    shadow_catalog.extend(host_skills.0.clone());
-                }
+                let shadow_catalog = expanded_catalog;
                 let shadow_selected_entries =
                     collect_explicit_skill_mentions(&input.user_input, &shadow_catalog);
                 Some(self.shadow_selection.run(

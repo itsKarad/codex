@@ -4,6 +4,9 @@ use std::time::Duration;
 
 use codex_analytics::AnalyticsEventsClient;
 use codex_app_server_protocol::ServerNotification;
+use codex_app_server_protocol::SkillSuggestion;
+use codex_app_server_protocol::SkillSuggestionNotification;
+use codex_app_server_protocol::SkillSuggestionStatus;
 use codex_app_server_protocol::ThreadGoal;
 use codex_app_server_protocol::ThreadGoalUpdatedNotification;
 use codex_app_server_protocol::ThreadQueueChangedNotification;
@@ -14,6 +17,8 @@ use codex_exec_server::EnvironmentManager;
 use codex_extension_api::ExtensionEventSink;
 use codex_extension_api::ExtensionRegistry;
 use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::ExtensionSkillSuggestion;
+use codex_extension_api::ExtensionSkillSuggestionStatus;
 use codex_extension_api::ExtensionWarning;
 use codex_extension_api::TurnStartAdmission;
 use codex_goal_extension::GoalExtensionConfig;
@@ -91,7 +96,7 @@ pub(crate) fn thread_extensions(
         &mut builder,
         auth_manager.clone(),
         git_attribution_base_url,
-        http_client_factory,
+        http_client_factory.clone(),
     );
     codex_guardian_v2::install(&mut builder, auth_manager.clone(), thread_manager);
     codex_memories_extension::install(&mut builder, codex_otel::global());
@@ -104,10 +109,11 @@ pub(crate) fn thread_extensions(
     let skill_providers = codex_skills_extension::SkillProviders::new()
         .with_executor_provider(executor_skill_provider)
         .with_host_provider(Arc::new(codex_skills_extension::HostSkillProvider::new()));
-    codex_skills_extension::install_with_providers_and_metrics(
+    codex_skills_extension::install_with_providers_and_metrics_and_jev_client(
         &mut builder,
         skill_providers,
         codex_otel::global(),
+        http_client_factory,
         |config: &Config| codex_skills_extension::SkillsExtensionConfig {
             include_instructions: config.include_skill_instructions,
             max_context_tokens: config.skill_max_context_tokens,
@@ -116,6 +122,9 @@ pub(crate) fn thread_extensions(
             shadow_selection_enabled: config
                 .features
                 .enabled(codex_features::Feature::SkillSearch),
+            jev_skill_selection_enabled: config
+                .features
+                .enabled(codex_features::Feature::JevSkillSelection),
         },
     );
     Arc::new(builder.build())
@@ -291,6 +300,78 @@ impl ExtensionEventSink for AppServerExtensionEventSink {
             send_thread_warning(&outgoing, &thread_state_manager, thread_id, message).await;
         });
     }
+
+    fn emit_skill_suggestion(&self, suggestion: ExtensionSkillSuggestion) {
+        let Ok(thread_id) = ThreadId::from_string(&suggestion.thread_id) else {
+            tracing::warn!("dropping Jev skill suggestion with an invalid thread id");
+            return;
+        };
+        if let Some(listener_command_tx) = self
+            .thread_state_manager
+            .current_listener_command_tx(thread_id)
+        {
+            let command = ThreadListenerCommand::EmitSkillSuggestion {
+                turn_id: suggestion.turn_id.clone(),
+                status: suggestion.status,
+                suggestions: suggestion.suggestions.clone(),
+            };
+            if listener_command_tx.send(command).is_ok() {
+                return;
+            }
+            tracing::warn!("failed to enqueue Jev skill suggestion for {thread_id}");
+        }
+
+        let outgoing = Arc::clone(&self.outgoing);
+        let thread_state_manager = self.thread_state_manager.clone();
+        tokio::spawn(async move {
+            send_skill_suggestion(
+                outgoing,
+                thread_state_manager,
+                thread_id,
+                suggestion.turn_id,
+                suggestion.status,
+                suggestion.suggestions,
+            )
+            .await;
+        });
+    }
+}
+
+async fn send_skill_suggestion(
+    outgoing: Arc<OutgoingMessageSender>,
+    thread_state_manager: ThreadStateManager,
+    thread_id: ThreadId,
+    turn_id: String,
+    status: ExtensionSkillSuggestionStatus,
+    suggestions: Vec<codex_extension_api::ExtensionSkillSuggestionItem>,
+) {
+    let subscribed_connection_ids = thread_state_manager
+        .subscribed_connection_ids(thread_id)
+        .await;
+    let outgoing =
+        ThreadScopedOutgoingMessageSender::new(outgoing, subscribed_connection_ids, thread_id);
+    outgoing
+        .send_server_notification(ServerNotification::SkillSuggestion(
+            SkillSuggestionNotification {
+                thread_id: thread_id.to_string(),
+                turn_id,
+                status: match status {
+                    ExtensionSkillSuggestionStatus::Suggested => SkillSuggestionStatus::Suggested,
+                    ExtensionSkillSuggestionStatus::NoMatch => SkillSuggestionStatus::NoMatch,
+                    ExtensionSkillSuggestionStatus::Unavailable => {
+                        SkillSuggestionStatus::Unavailable
+                    }
+                },
+                suggestions: suggestions
+                    .into_iter()
+                    .map(|suggestion| SkillSuggestion {
+                        name: suggestion.name,
+                        fit_probability: suggestion.fit_probability,
+                    })
+                    .collect(),
+            },
+        ))
+        .await;
 }
 
 #[cfg(test)]
@@ -328,13 +409,22 @@ mod tests {
             turn_id: Some("turn-warning".to_string()),
             message: "catalog was shortened".to_string(),
         });
+        sink.emit_skill_suggestion(ExtensionSkillSuggestion {
+            thread_id: thread_id.to_string(),
+            turn_id: "turn-jev".to_string(),
+            status: ExtensionSkillSuggestionStatus::Suggested,
+            suggestions: vec![codex_extension_api::ExtensionSkillSuggestionItem {
+                name: "PDF".to_string(),
+                fit_probability: 0.91,
+            }],
+        });
         sink.emit(thread_goal_updated_event(thread_id, "turn-2"));
         listener_command_tx
             .send(ThreadListenerCommand::EmitThreadGoalCleared)
             .expect("listener command channel should be open");
 
         let mut observed = Vec::new();
-        for _ in 0..4 {
+        for _ in 0..5 {
             let command = timeout(Duration::from_secs(1), listener_command_rx.recv())
                 .await
                 .expect("timed out waiting for listener command")
@@ -344,6 +434,15 @@ mod tests {
                     observed.push(turn_id.expect("extension goal updates should include turn ids"));
                 }
                 ThreadListenerCommand::EmitWarning { message } => observed.push(message),
+                ThreadListenerCommand::EmitSkillSuggestion {
+                    turn_id,
+                    status,
+                    suggestions,
+                } => {
+                    assert_eq!(status, ExtensionSkillSuggestionStatus::Suggested);
+                    assert_eq!(suggestions[0].fit_probability, 0.91);
+                    observed.push(format!("suggestions for {turn_id}"));
+                }
                 ThreadListenerCommand::EmitThreadGoalCleared => {
                     observed.push("cleared".to_string())
                 }
@@ -355,6 +454,7 @@ mod tests {
             vec![
                 "turn-1".to_string(),
                 "catalog was shortened".to_string(),
+                "suggestions for turn-jev".to_string(),
                 "turn-2".to_string(),
                 "cleared".to_string()
             ],

@@ -2041,8 +2041,13 @@ async fn run_debug_prompt_input_command(
         config.chatgpt_base_url.clone(),
         config.http_client_factory(),
     );
-    codex_skills_extension::install(&mut extensions, |config: &Config| {
-        codex_skills_extension::SkillsExtensionConfig {
+    codex_skills_extension::install_with_providers_and_metrics_and_jev_client(
+        &mut extensions,
+        codex_skills_extension::SkillProviders::new()
+            .with_host_provider(Arc::new(codex_skills_extension::HostSkillProvider::new())),
+        None,
+        config.http_client_factory(),
+        |config: &Config| codex_skills_extension::SkillsExtensionConfig {
             include_instructions: config.include_skill_instructions,
             max_context_tokens: config.skill_max_context_tokens,
             bundled_skills_enabled: config.bundled_skills_enabled(),
@@ -2050,8 +2055,11 @@ async fn run_debug_prompt_input_command(
             shadow_selection_enabled: config
                 .features
                 .enabled(codex_features::Feature::SkillSearch),
-        }
-    });
+            jev_skill_selection_enabled: config
+                .features
+                .enabled(codex_features::Feature::JevSkillSelection),
+        },
+    );
     let prompt_input = codex_core::build_prompt_input(
         config,
         input,

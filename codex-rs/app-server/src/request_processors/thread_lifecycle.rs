@@ -1,5 +1,9 @@
 use super::*;
 use crate::extensions::send_thread_warning;
+use codex_app_server_protocol::ServerNotification;
+use codex_app_server_protocol::SkillSuggestion;
+use codex_app_server_protocol::SkillSuggestionNotification;
+use codex_app_server_protocol::SkillSuggestionStatus;
 use codex_app_server_protocol::ThreadQueueChangedNotification;
 use codex_extension_api::ThreadIdleCause;
 use codex_protocol::config_types::MultiAgentMode;
@@ -523,6 +527,46 @@ pub(super) async fn handle_thread_listener_command(
                 .send_server_notification(ServerNotification::ThreadQueueChanged(
                     ThreadQueueChangedNotification {
                         thread_id: conversation_id.to_string(),
+                    },
+                ))
+                .await;
+        }
+        ThreadListenerCommand::EmitSkillSuggestion {
+            turn_id,
+            status,
+            suggestions,
+        } => {
+            let subscribed_connection_ids = thread_state_manager
+                .subscribed_connection_ids(conversation_id)
+                .await;
+            let outgoing = ThreadScopedOutgoingMessageSender::new(
+                Arc::clone(outgoing),
+                subscribed_connection_ids,
+                conversation_id,
+            );
+            outgoing
+                .send_server_notification(ServerNotification::SkillSuggestion(
+                    SkillSuggestionNotification {
+                        thread_id: conversation_id.to_string(),
+                        turn_id,
+                        status: match status {
+                            codex_extension_api::ExtensionSkillSuggestionStatus::Suggested => {
+                                SkillSuggestionStatus::Suggested
+                            }
+                            codex_extension_api::ExtensionSkillSuggestionStatus::NoMatch => {
+                                SkillSuggestionStatus::NoMatch
+                            }
+                            codex_extension_api::ExtensionSkillSuggestionStatus::Unavailable => {
+                                SkillSuggestionStatus::Unavailable
+                            }
+                        },
+                        suggestions: suggestions
+                            .into_iter()
+                            .map(|suggestion| SkillSuggestion {
+                                name: suggestion.name,
+                                fit_probability: suggestion.fit_probability,
+                            })
+                            .collect(),
                     },
                 ))
                 .await;

@@ -315,6 +315,9 @@ pub(crate) use helpers::set_chatgpt_auth;
 pub(crate) use helpers::set_fast_mode_test_catalog;
 pub(super) use helpers::*;
 
+#[path = "protocol_tests.rs"]
+mod protocol_tests;
+
 #[path = "tests/questions_tests.rs"]
 mod questions_tests;
 

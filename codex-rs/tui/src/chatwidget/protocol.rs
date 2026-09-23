@@ -14,6 +14,12 @@ impl ChatWidget {
         {
             return;
         }
+        if let ServerNotification::SkillSuggestion(notification) = &notification
+            && let Some(thread_id) = self.thread_id()
+            && notification.thread_id != thread_id.to_string()
+        {
+            return;
+        }
 
         if replay_kind != Some(ReplayKind::ResumeInitialMessages)
             && !self.recover_resumed_reasoning(&notification)
@@ -214,6 +220,15 @@ impl ChatWidget {
             }
             ServerNotification::SkillsChanged(_) => {
                 self.refresh_skills_for_current_cwd(/*force_reload*/ true);
+            }
+            ServerNotification::SkillSuggestion(notification) => {
+                if !from_replay {
+                    let message = skill_suggestion_status_message(
+                        notification.status,
+                        &notification.suggestions,
+                    );
+                    self.add_info_message(message, /*hint*/ None);
+                }
             }
             ServerNotification::ModelRerouted(_) => {}
             ServerNotification::ModelVerification(notification) => {
@@ -654,6 +669,33 @@ impl ChatWidget {
                 notification.turn_id,
                 replay_kind.map_or(ThreadItemRenderSource::Live, ThreadItemRenderSource::Replay),
             ),
+        }
+    }
+}
+
+fn skill_suggestion_status_message(
+    status: codex_app_server_protocol::SkillSuggestionStatus,
+    suggestions: &[codex_app_server_protocol::SkillSuggestion],
+) -> String {
+    match status {
+        codex_app_server_protocol::SkillSuggestionStatus::Suggested => format!(
+            "Jev suggests skills: {}",
+            suggestions
+                .iter()
+                .take(3)
+                .map(|suggestion| {
+                    let name = &suggestion.name;
+                    let fit_percent = suggestion.fit_probability * 100.0;
+                    format!("{name} ({fit_percent:.1}%)")
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        codex_app_server_protocol::SkillSuggestionStatus::NoMatch => {
+            "Jev found no high-confidence skill match.".to_string()
+        }
+        codex_app_server_protocol::SkillSuggestionStatus::Unavailable => {
+            "Jev skill suggestions are unavailable.".to_string()
         }
     }
 }

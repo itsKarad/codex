@@ -1924,6 +1924,8 @@ server_notification_definitions! {
     ThreadClosed => "thread/closed" (v2::ThreadClosedNotification),
     ThreadReverted => "thread/reverted" (v2::ThreadRevertedNotification),
     SkillsChanged => "skills/changed" (v2::SkillsChangedNotification),
+    #[experimental("skill/suggestion")]
+    SkillSuggestion => "skill/suggestion" (v2::SkillSuggestionNotification),
     ThreadNameUpdated => "thread/name/updated" (v2::ThreadNameUpdatedNotification),
     ThreadAttachmentUpdated => "thread/attachment/updated" (v2::ThreadAttachmentUpdatedNotification),
     ThreadGoalUpdated => "thread/goal/updated" (v2::ThreadGoalUpdatedNotification),

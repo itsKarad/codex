@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use codex_http_client::RouteAwareClientPool;
 use codex_protocol::user_input::UserInput;
+use codex_skills::extract_tool_mentions;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -14,6 +15,7 @@ use crate::catalog::SkillCatalogEntry;
 use crate::dynamic_skill_selector::CheapSkillSelector;
 use crate::dynamic_skill_selector::SkillSelectionDocument;
 use crate::dynamic_skill_selector::WeightedLexicalSkillSelector;
+use crate::selection::entry_matches_explicit_name;
 
 const OPENROUTER_DECISIONS_URL: &str = "https://openrouter.ai/api/alpha/decisions";
 const DEFAULT_JEV_MODEL: &str = "~typesafe/jev-latest";
@@ -204,18 +206,32 @@ pub(crate) fn substantive_request(inputs: &[UserInput]) -> Option<String> {
     .then_some(text)
 }
 
-pub(crate) fn has_explicit_skill_selection(inputs: &[UserInput]) -> bool {
+pub(crate) fn has_explicit_skill_selection(
+    inputs: &[UserInput],
+    entries: &[SkillCatalogEntry],
+) -> bool {
     inputs.iter().any(|input| match input {
         UserInput::Skill { .. } => true,
-        UserInput::Mention { path, .. } => {
-            path.starts_with("skill://")
-                || path
-                    .rsplit(['/', '\\'])
-                    .next()
-                    .is_some_and(|name| name.eq_ignore_ascii_case("SKILL.md"))
+        UserInput::Mention { path, .. } => is_skill_path(path),
+        UserInput::Text { text, .. } => {
+            let mentions = extract_tool_mentions(text);
+            mentions.paths().any(is_skill_path)
+                || mentions.plain_names().any(|name| {
+                    entries
+                        .iter()
+                        .any(|entry| entry_matches_explicit_name(entry, name))
+                })
         }
         _ => false,
     })
+}
+
+fn is_skill_path(path: &str) -> bool {
+    path.starts_with("skill://")
+        || path
+            .rsplit(['/', '\\'])
+            .next()
+            .is_some_and(|name| name.eq_ignore_ascii_case("SKILL.md"))
 }
 
 fn eligible_candidates(

@@ -4783,6 +4783,26 @@
           "properties": {
             "method": {
               "enum": [
+                "skill/suggestion"
+              ],
+              "title": "Skill/suggestionNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/SkillSuggestionNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Skill/suggestionNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
                 "thread/name/updated"
               ],
               "title": "Thread/name/updatedNotificationMethod",
@@ -20647,6 +20667,61 @@
           "repo",
           "system",
           "admin"
+        ],
+        "type": "string"
+      },
+      "SkillSuggestion": {
+        "description": "A skill Jev rated as a high-confidence fit for the current request.",
+        "properties": {
+          "fitProbability": {
+            "format": "double",
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fitProbability",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SkillSuggestionNotification": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Status of Jev's advisory skill-selection pass for a turn.",
+        "properties": {
+          "status": {
+            "$ref": "#/definitions/v2/SkillSuggestionStatus"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/definitions/v2/SkillSuggestion"
+            },
+            "type": "array"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "turnId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "suggestions",
+          "threadId",
+          "turnId"
+        ],
+        "title": "SkillSuggestionNotification",
+        "type": "object"
+      },
+      "SkillSuggestionStatus": {
+        "description": "Whether Jev returned strong skill matches, no match, or could not complete the check.",
+        "enum": [
+          "suggested",
+          "noMatch",
+          "unavailable"
         ],
         "type": "string"
       },
