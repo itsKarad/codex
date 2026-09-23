@@ -8,6 +8,47 @@ use crate::catalog_prompt::render_available_skills_body;
 use crate::tools::SkillToolAuthority;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SkillSuggestionsInstructions {
+    suggestions: Vec<(String, String)>,
+}
+
+impl SkillSuggestionsInstructions {
+    pub(crate) fn new(suggestions: Vec<(String, String)>) -> Self {
+        Self { suggestions }
+    }
+}
+
+impl ContextualUserFragment for SkillSuggestionsInstructions {
+    fn role(&self) -> &'static str {
+        "developer"
+    }
+
+    fn content_kind(&self) -> ContentItemKind {
+        ContentItemKind("skills.suggestions".to_string())
+    }
+
+    fn markers(&self) -> (&'static str, &'static str) {
+        Self::type_markers()
+    }
+
+    fn type_markers() -> (&'static str, &'static str) {
+        ("<skill_suggestions>", "</skill_suggestions>")
+    }
+
+    fn body(&self) -> String {
+        let suggestions = self
+            .suggestions
+            .iter()
+            .map(|(name, path)| format!("- {name} ({path})"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "\nJev found high-confidence skill matches for this request. Treat these as suggestions and use them only when they fit the user's request:\n{suggestions}\n"
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AvailableSkillsInstructions {
     prompt_kind: SkillPromptKind,
     skill_root_lines: Vec<String>,

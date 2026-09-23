@@ -17,6 +17,9 @@ use codex_extension_api::ExtensionEventSink;
 use codex_extension_api::ExtensionFuture;
 use codex_extension_api::ExtensionMetrics;
 use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::ExtensionSkillSuggestion;
+use codex_extension_api::ExtensionSkillSuggestionItem;
+use codex_extension_api::ExtensionSkillSuggestionStatus;
 use codex_extension_api::ExtensionWarning;
 use codex_extension_api::PromptFragment;
 use codex_extension_api::SelectedPluginSnapshot;
@@ -32,6 +35,9 @@ use codex_extension_api::TurnInputContext;
 use codex_extension_api::TurnInputContributor;
 use codex_extension_api::WorldStateContributionInput;
 use codex_extension_api::WorldStateSectionContribution;
+use codex_http_client::ClientRouteClass;
+use codex_http_client::HttpClientFactory;
+use codex_http_client::RouteAwareClientPool;
 use codex_mcp::McpResourceClient;
 use codex_otel::MetricsClient;
 use codex_protocol::openai_models::ModelInfo;
@@ -44,6 +50,11 @@ use crate::catalog::SkillSourceKind;
 use crate::fragments::AvailableSkillsInstructions;
 use crate::fragments::SkillInstructions;
 use crate::fragments::SkillResourceAccess;
+use crate::fragments::SkillSuggestionsInstructions;
+use crate::jev_selection::JevSkillSelector;
+use crate::jev_selection::configured_model;
+use crate::jev_selection::has_explicit_skill_selection;
+use crate::jev_selection::substantive_request;
 use crate::provider::HostSkillProvider;
 use crate::provider::SkillListQuery;
 use crate::provider::SkillReadRequest;
@@ -84,6 +95,7 @@ struct SkillsExtension<C> {
     event_sink: Arc<dyn ExtensionEventSink>,
     config_from_host: Arc<dyn Fn(&C) -> SkillsExtensionConfig + Send + Sync>,
     shadow_selection: Arc<ShadowSelectionExperiment>,
+    jev_skill_selector: Option<JevSkillSelector>,
 }
 
 #[derive(Default)]
@@ -398,6 +410,62 @@ where
             }
 
             let selected_entries = collect_explicit_skill_mentions(&input.user_input, &catalog);
+            let mut skill_suggestion_fragment = None;
+            if config.jev_skill_selection_enabled
+                && let Some(request) = substantive_request(&input.user_input)
+            {
+                let task_context = thread_state
+                    .skill_suggestion_history
+                    .context_for_turn(&input.turn_id, &request);
+                if !has_explicit_skill_selection(&input.user_input) && selected_entries.is_empty() {
+                    let mut suggestion_catalog = catalog.clone();
+                    if let Some(host_skills) = &host_skills {
+                        suggestion_catalog.extend(host_skills.0.clone());
+                    }
+                    let api_key = std::env::var("OPENROUTER_API_KEY").ok();
+                    let model = std::env::var("OPENROUTER_MODEL").ok();
+                    let result = if let Some(selector) = self.jev_skill_selector.as_ref() {
+                        selector
+                            .suggest(
+                                api_key.as_deref(),
+                                Some(configured_model(model.as_deref())),
+                                &task_context,
+                                &suggestion_catalog.entries,
+                            )
+                            .await
+                    } else {
+                        Err(crate::jev_selection::JevSkillSelectionError::MissingApiKey)
+                    };
+                    let (status, suggestions) = match result {
+                        Ok(suggestions) if suggestions.is_empty() => {
+                            (ExtensionSkillSuggestionStatus::NoMatch, Vec::new())
+                        }
+                        Ok(suggestions) => (ExtensionSkillSuggestionStatus::Suggested, suggestions),
+                        Err(_) => (ExtensionSkillSuggestionStatus::Unavailable, Vec::new()),
+                    };
+                    self.event_sink
+                        .emit_skill_suggestion(ExtensionSkillSuggestion {
+                            thread_id: thread_store.level_id().to_string(),
+                            turn_id: input.turn_id.clone(),
+                            status,
+                            suggestions: suggestions
+                                .iter()
+                                .map(|suggestion| ExtensionSkillSuggestionItem {
+                                    name: suggestion.name.clone(),
+                                    fit_probability: suggestion.fit_probability,
+                                })
+                                .collect(),
+                        });
+                    if status == ExtensionSkillSuggestionStatus::Suggested {
+                        skill_suggestion_fragment = Some(SkillSuggestionsInstructions::new(
+                            suggestions
+                                .into_iter()
+                                .map(|suggestion| (suggestion.name, suggestion.path))
+                                .collect(),
+                        ));
+                    }
+                }
+            }
             let shadow_selection_turn = if config.shadow_selection_enabled {
                 let mut shadow_catalog = catalog.clone();
                 if let Some(host_skills) = host_skills {
@@ -448,6 +516,9 @@ where
                 if let Some(fragment) = rendered.fragment {
                     fragments.push(Box::new(fragment));
                 }
+            }
+            if let Some(fragment) = skill_suggestion_fragment {
+                fragments.push(Box::new(fragment));
             }
 
             let mut warnings = catalog.warnings.clone();
@@ -663,11 +734,43 @@ pub fn install_with_providers_and_metrics<C>(
 ) where
     C: Send + Sync + 'static,
 {
+    install_internal(registry, providers, metrics_client, None, config_from_host);
+}
+
+pub fn install_with_providers_and_metrics_and_jev_client<C>(
+    registry: &mut ExtensionRegistryBuilder<C>,
+    providers: SkillProviders,
+    metrics_client: Option<MetricsClient>,
+    http_client_factory: HttpClientFactory,
+    config_from_host: impl Fn(&C) -> SkillsExtensionConfig + Send + Sync + 'static,
+) where
+    C: Send + Sync + 'static,
+{
+    let client = RouteAwareClientPool::new(http_client_factory, ClientRouteClass::Api);
+    install_internal(
+        registry,
+        providers,
+        metrics_client,
+        Some(JevSkillSelector::new(client)),
+        config_from_host,
+    );
+}
+
+fn install_internal<C>(
+    registry: &mut ExtensionRegistryBuilder<C>,
+    providers: SkillProviders,
+    metrics_client: Option<MetricsClient>,
+    jev_skill_selector: Option<JevSkillSelector>,
+    config_from_host: impl Fn(&C) -> SkillsExtensionConfig + Send + Sync + 'static,
+) where
+    C: Send + Sync + 'static,
+{
     let extension = Arc::new(SkillsExtension {
         providers,
         event_sink: registry.event_sink(),
         config_from_host: Arc::new(config_from_host),
         shadow_selection: Arc::new(ShadowSelectionExperiment::new(metrics_client)),
+        jev_skill_selector,
     });
     registry.thread_lifecycle_contributor(extension.clone());
     registry.turn_lifecycle_contributor(Arc::new(SkillTelemetry));

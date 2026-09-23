@@ -349,6 +349,7 @@ fn catalog_extensions(
             bundled_skills_enabled: false,
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         }
     });
     (Arc::new(extensions.build()), event_rx)
@@ -626,6 +627,7 @@ async fn capability_sections_render_in_order_with_host_repo_and_plugin_skills() 
         bundled_skills_enabled: config.bundled_skills_enabled(),
         cloud_skill_enabled: config.cloud_skill_enabled,
         shadow_selection_enabled: config.features.enabled(Feature::SkillSearch),
+        jev_skill_selection_enabled: false,
     });
     let mut builder = test_codex()
         .with_home(Arc::clone(&codex_home))
@@ -1035,6 +1037,7 @@ async fn opted_in_executor_provider_skips_host_discovery_but_injects_discovered_
             bundled_skills_enabled: false,
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let mut builder = test_codex()
@@ -1261,6 +1264,7 @@ async fn executor_only_provider_preserves_structured_repo_skill_without_discover
             bundled_skills_enabled: false,
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let mut builder = test_codex()
@@ -1405,6 +1409,7 @@ async fn executor_skill_tool_reads_references_under_current_permissions(
             bundled_skills_enabled: false,
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let mut builder = test_codex()
@@ -1707,6 +1712,7 @@ async fn explicit_executor_skill_prompt_rejects_oversized_resource() -> Result<(
             bundled_skills_enabled: false,
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let mut builder = test_codex()
@@ -1937,6 +1943,7 @@ async fn production_turn_aliases_combined_skill_catalogs_under_shared_budget() -
             bundled_skills_enabled: false,
             cloud_skill_enabled: true,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let mut builder = test_codex()
@@ -2075,6 +2082,7 @@ async fn assert_catalog_model_switch(max_context_tokens: Option<usize>) -> Resul
             bundled_skills_enabled: false,
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let mut builder = test_codex()
@@ -2513,6 +2521,7 @@ async fn production_turn_uses_provider_host_catalog_and_core_snapshot_injection(
             bundled_skills_enabled: false,
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let mut builder = apps_enabled_builder(apps_server.chatgpt_base_url)
@@ -2633,6 +2642,7 @@ async fn production_turn_suppresses_only_the_superseded_host_skill_prompt() -> R
             bundled_skills_enabled: false,
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let mut builder = test_codex()
@@ -2894,6 +2904,7 @@ async fn production_turn_keeps_cloud_world_state_incremental_across_turns() -> R
             bundled_skills_enabled: false,
             cloud_skill_enabled: config.cloud_skill_enabled,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let mut builder = test_codex()
@@ -3157,6 +3168,7 @@ async fn production_turn_fairly_shortens_extension_catalog_descriptions() -> Res
             bundled_skills_enabled: false,
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let mut builder = test_codex()

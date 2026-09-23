@@ -13,4 +13,6 @@ pub struct SkillsExtensionConfig {
     pub cloud_skill_enabled: bool,
     /// Whether cheap skill selectors run in shadow mode without changing prompt contents.
     pub shadow_selection_enabled: bool,
+    /// Whether Jev may suggest high-confidence skills for substantive turns.
+    pub jev_skill_selection_enabled: bool,
 }

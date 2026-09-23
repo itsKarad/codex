@@ -4496,6 +4496,7 @@ dependencies = [
  "codex-config",
  "codex-exec-server",
  "codex-extension-api",
+ "codex-http-client",
  "codex-mcp",
  "codex-models-manager",
  "codex-otel",
@@ -4518,9 +4519,11 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "toml 0.9.11+spec-1.1.0",
  "tracing",
+ "wiremock",
 ]
 
 [[package]]

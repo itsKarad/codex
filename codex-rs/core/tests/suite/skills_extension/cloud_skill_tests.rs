@@ -159,6 +159,7 @@ text({ names: result.skills.map(skill => skill.name), warnings: result.warnings,
             bundled_skills_enabled: false,
             cloud_skill_enabled: true,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let chatgpt_base_url = server.uri();
@@ -500,6 +501,7 @@ async fn production_turn_aliases_discovered_singleton_cloud_root() -> Result<()>
             bundled_skills_enabled: false,
             cloud_skill_enabled: true,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let chatgpt_base_url = server.uri();
@@ -623,6 +625,7 @@ async fn cloud_skill_can_read_referenced_resource_without_an_executor() -> Resul
             bundled_skills_enabled: false,
             cloud_skill_enabled: true,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
         },
     );
     let chatgpt_base_url = responses_server.uri();

@@ -19,6 +19,7 @@ use crate::catalog::SkillProviderError;
 use crate::catalog::SkillProviderResult;
 use crate::catalog::SkillReadResult;
 use crate::catalog::SkillSourceKind;
+use crate::jev_selection::SkillSuggestionHistory;
 use crate::provider::SkillListQuery;
 use crate::provider::SkillReadRequest;
 use crate::shadow_selection_experiment::RecentSkillInvocations;
@@ -50,6 +51,7 @@ pub struct SkillsThreadState {
     pub(crate) executor_read_snapshot: Mutex<Option<ExecutorReadSnapshot>>,
     pub(crate) recent_skill_invocations: Arc<RecentSkillInvocations>,
     pub(crate) shadow_task_context: Arc<ShadowTaskContext>,
+    pub(crate) skill_suggestion_history: SkillSuggestionHistory,
 }
 
 impl SkillsThreadState {
@@ -62,6 +64,7 @@ impl SkillsThreadState {
             executor_read_snapshot: Mutex::new(None),
             recent_skill_invocations: Arc::new(RecentSkillInvocations::default()),
             shadow_task_context: Arc::new(ShadowTaskContext::default()),
+            skill_suggestion_history: SkillSuggestionHistory::default(),
         }
     }
 

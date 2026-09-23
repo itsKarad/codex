@@ -327,6 +327,7 @@ async fn user_turn_selects_symlinked_skill_by_advertised_discovery_path() -> Res
         bundled_skills_enabled: false,
         cloud_skill_enabled: false,
         shadow_selection_enabled: false,
+        jev_skill_selection_enabled: false,
     });
     let mut builder = test_codex()
         .with_extensions(Arc::new(extensions.build()))

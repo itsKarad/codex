@@ -92,6 +92,7 @@ fn skills_extensions() -> Arc<ExtensionRegistry<Config>> {
         bundled_skills_enabled: config.bundled_skills_enabled(),
         cloud_skill_enabled: config.cloud_skill_enabled,
         shadow_selection_enabled: config.features.enabled(Feature::SkillSearch),
+        jev_skill_selection_enabled: false,
     });
     Arc::new(extensions.build())
 }

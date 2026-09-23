@@ -5,6 +5,9 @@ mod response_items;
 
 pub use conversation_history::ConversationHistorySnapshot;
 pub use events::ExtensionEventSink;
+pub use events::ExtensionSkillSuggestion;
+pub use events::ExtensionSkillSuggestionItem;
+pub use events::ExtensionSkillSuggestionStatus;
 pub use events::ExtensionWarning;
 pub use events::NoopExtensionEventSink;
 pub use metrics::ExtensionMetrics;
