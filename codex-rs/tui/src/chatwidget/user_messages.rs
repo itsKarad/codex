@@ -150,6 +150,7 @@ pub(crate) struct ThreadInputState {
     pub(super) plan_mode_reasoning_effort: Option<ReasoningEffortConfig>,
     pub(super) task_running: bool,
     pub(super) agent_turn_running: bool,
+    pub(super) pending_auto_route: Option<super::autoroute::PendingAutoRoute>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

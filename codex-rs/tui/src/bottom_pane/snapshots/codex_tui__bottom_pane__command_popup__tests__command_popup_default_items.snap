@@ -1,8 +1,10 @@
 ---
 source: tui/src/bottom_pane/command_popup.rs
+assertion_line: 505
 expression: commands
 ---
 /model - choose what model and reasoning effort to use
+/autoroute - choose whether Jev selects a model for each task
 /ide - include current selection, open files, and other context from your IDE
 /permissions - choose what Codex is allowed to do
 /keymap - remap TUI shortcuts

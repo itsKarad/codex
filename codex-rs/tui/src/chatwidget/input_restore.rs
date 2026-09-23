@@ -584,6 +584,7 @@ impl ChatWidget {
             plan_mode_reasoning_effort: self.config.plan_mode_reasoning_effort.clone(),
             task_running: self.bottom_pane.is_task_running(),
             agent_turn_running: self.turn_lifecycle.agent_turn_running,
+            pending_auto_route: self.pending_auto_route.clone(),
         })
     }
 
@@ -596,6 +597,7 @@ impl ChatWidget {
         let restored_task_running =
             preserve_in_flight_turn && input_state.as_ref().is_some_and(|state| state.task_running);
         if let Some(input_state) = input_state {
+            self.pending_auto_route = input_state.pending_auto_route;
             self.bottom_pane.restore_questions(input_state.questions);
             self.input_queue.recovered_queue = input_state.recovered_queue;
             self.current_collaboration_mode = input_state.current_collaboration_mode;
@@ -650,6 +652,7 @@ impl ChatWidget {
                 UserMessageHistoryRecord::UserMessageText,
             );
         } else {
+            self.pending_auto_route = None;
             self.turn_lifecycle
                 .restore_running(/*running*/ false, Instant::now());
             self.safety_buffering_prompt = None;
@@ -670,6 +673,7 @@ impl ChatWidget {
             self.refresh_status_surfaces();
         }
         self.refresh_pending_input_preview();
+        self.restore_pending_auto_route();
         self.request_redraw();
     }
 

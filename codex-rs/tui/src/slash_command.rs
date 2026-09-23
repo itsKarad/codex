@@ -13,6 +13,8 @@ pub enum SlashCommand {
     // DO NOT ALPHA-SORT! Enum order is presentation order in the popup, so
     // more frequently used commands should be listed first.
     Model,
+    #[strum(serialize = "autoroute")]
+    AutoRoute,
     Ide,
     Permissions,
     Keymap,
@@ -129,6 +131,7 @@ impl SlashCommand {
             SlashCommand::MemoryDrop => "DO NOT USE",
             SlashCommand::MemoryUpdate => "DO NOT USE",
             SlashCommand::Model => "choose what model and reasoning effort to use",
+            SlashCommand::AutoRoute => "choose whether Jev selects a model for each task",
             SlashCommand::Ide => {
                 "include current selection, open files, and other context from your IDE"
             }
@@ -229,6 +232,7 @@ impl SlashCommand {
                 | SlashCommand::Warnings
                 | SlashCommand::DebugConfig
                 | SlashCommand::Pwd
+                | SlashCommand::AutoRoute
                 | SlashCommand::Rollout
                 | SlashCommand::Copy
                 | SlashCommand::Raw
@@ -264,6 +268,7 @@ impl SlashCommand {
             SlashCommand::Diff
             | SlashCommand::Resume
             | SlashCommand::Model
+            | SlashCommand::AutoRoute
             | SlashCommand::Permissions
             | SlashCommand::Copy
             | SlashCommand::Raw

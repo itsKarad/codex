@@ -134,12 +134,56 @@ impl ChatWidget {
         source: UserMessageSource,
         prepared_images: Option<Vec<UserInput>>,
     ) -> (bool, Option<AppCommand>) {
+        self.submit_user_message_with_prepared_images_and_route(
+            user_message,
+            history_record,
+            shell_escape_policy,
+            source,
+            prepared_images,
+            None,
+        )
+    }
+
+    pub(super) fn submit_auto_routed_user_message(
+        &mut self,
+        user_message: UserMessage,
+        history_record: UserMessageHistoryRecord,
+        shell_escape_policy: ShellEscapePolicy,
+        source: UserMessageSource,
+        model: String,
+        effort: ReasoningEffortConfig,
+    ) {
+        let (accepted, _) = self.submit_user_message_with_prepared_images_and_route(
+            user_message,
+            history_record,
+            shell_escape_policy,
+            source,
+            None,
+            Some(super::autoroute::AutoRouteTurnOverride { model, effort }),
+        );
+        if !accepted {
+            self.input_queue.recovered_queue |= self.input_queue.has_queued_follow_up_messages();
+        }
+    }
+
+    pub(super) fn submit_user_message_with_prepared_images_and_route(
+        &mut self,
+        user_message: UserMessage,
+        history_record: UserMessageHistoryRecord,
+        shell_escape_policy: ShellEscapePolicy,
+        source: UserMessageSource,
+        prepared_images: Option<Vec<UserInput>>,
+        route_override: Option<super::autoroute::AutoRouteTurnOverride>,
+    ) -> (bool, Option<AppCommand>) {
         self.bottom_pane.dismiss_composer_sparkle();
         if self.has_misalignment_policy_violation() {
             return (false, None);
         }
         self.empty_state_animation.borrow_mut().dismiss();
-        if self.input_queue.rate_limit_recovery_pending || self.pending_image_submission.is_some() {
+        if self.input_queue.rate_limit_recovery_pending
+            || self.pending_image_submission.is_some()
+            || self.pending_auto_route.is_some()
+        {
             let model_prompt = source == UserMessageSource::Prompt
                 && (shell_escape_policy == ShellEscapePolicy::Disallow
                     || !user_message.text.starts_with('!'));
@@ -197,8 +241,14 @@ impl ChatWidget {
         {
             return (false, None);
         }
+        let model_for_image_support = route_override.as_ref().map_or_else(
+            || self.current_model().to_string(),
+            |route| route.model.clone(),
+        );
         if (!user_message.local_images.is_empty() || !user_message.remote_image_urls.is_empty())
-            && !self.current_model_supports_images()
+            && !self.model_supports_images(&model_for_image_support)
+            && (route_override.is_some()
+                || !self.should_auto_route_submission(&user_message, shell_escape_policy))
         {
             let UserMessage {
                 text,
@@ -213,8 +263,15 @@ impl ChatWidget {
                 local_images,
                 mention_bindings,
                 remote_image_urls,
+                &model_for_image_support,
             );
             return (false, None);
+        }
+        if route_override.is_none()
+            && self.should_auto_route_submission(&user_message, shell_escape_policy)
+        {
+            self.begin_auto_route(user_message, history_record, shell_escape_policy, source);
+            return (true, None);
         }
         let UserMessage {
             text,
@@ -262,6 +319,7 @@ impl ChatWidget {
                 },
                 history_record,
                 source,
+                route_override,
             );
             return (true, None);
         } else {
@@ -394,6 +452,13 @@ impl ChatWidget {
         }
 
         let effective_mode = self.effective_collaboration_mode();
+        let effective_mode = route_override.map_or(effective_mode.clone(), |route| {
+            effective_mode.with_updates(
+                Some(route.model),
+                Some(Some(route.effort)),
+                /*developer_instructions*/ None,
+            )
+        });
         if effective_mode.model().trim().is_empty() {
             self.add_error_message(
                 "Thread model is unavailable. Wait for the thread to finish syncing or choose a model before sending input.".to_string(),
@@ -571,6 +636,7 @@ impl ChatWidget {
         local_images: Vec<LocalImageAttachment>,
         mention_bindings: Vec<MentionBinding>,
         remote_image_urls: Vec<String>,
+        model: &str,
     ) {
         // Preserve the user's composed payload so they can retry after changing models.
         self.restore_user_message_to_composer(UserMessage {
@@ -581,7 +647,7 @@ impl ChatWidget {
             remote_image_urls,
         });
         self.add_to_history(history_cell::new_warning_event(
-            self.image_inputs_not_supported_message(),
+            self.image_inputs_not_supported_message_for(model),
         ));
         self.request_redraw();
     }

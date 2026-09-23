@@ -1,0 +1,14 @@
+---
+source: tui/src/chatwidget/tests/autoroute_settings_tests.rs
+assertion_line: 11
+expression: "render_bottom_popup(&chat, 80)"
+---
+  AutoRoute
+
+
+› 1. Off (current)   Use the current model for every task.
+  2. Cost-effective  Prefer the least expensive model that fits the task.
+  3. Strongest fit   Prefer the strongest model that fits the task.
+
+  Jev selects a model before each new task.
+  enter select · esc back

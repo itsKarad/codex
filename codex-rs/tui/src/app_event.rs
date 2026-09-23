@@ -48,6 +48,9 @@ use uuid::Uuid;
 
 use crate::app_command::AppCommand;
 use crate::app_server_session::AppServerStartedThread;
+use crate::autoroute_client::AttachmentMetadata;
+use crate::autoroute_client::ModelCandidate;
+use crate::autoroute_client::RouteRecommendation;
 use crate::bottom_pane::ApprovalRequest;
 use crate::bottom_pane::StatusLineItem;
 use crate::bottom_pane::TerminalTitleItem;
@@ -59,6 +62,7 @@ use crate::experimental_features::FeatureWriteResult;
 use crate::goal_files::GoalDraft;
 use codex_app_server_protocol::AskForApproval;
 use codex_config::types::ApprovalsReviewer;
+use codex_config::types::AutoRouteMode;
 use codex_features::Feature;
 use codex_plugin::PluginCapabilitySummary;
 use codex_protocol::config_types::CollaborationModeMask;
@@ -1181,6 +1185,39 @@ pub(crate) enum AppEvent {
     PersistModelSelection {
         model: String,
         effort: Option<ReasoningEffort>,
+    },
+
+    /// Save the TUI's model auto-routing preference.
+    AutoRouteModeSelected {
+        mode: AutoRouteMode,
+    },
+
+    /// Ask Jev to choose a model and reasoning effort for one held turn.
+    AutoRouteRequested {
+        request_id: Uuid,
+        thread_id: Option<ThreadId>,
+        mode: AutoRouteMode,
+        task: String,
+        attachments: Vec<AttachmentMetadata>,
+        candidates: Vec<ModelCandidate>,
+    },
+    /// Return Jev's validated choice or the reason routing failed.
+    AutoRouteResolved {
+        request_id: Uuid,
+        thread_id: Option<ThreadId>,
+        result: Result<RouteRecommendation, String>,
+    },
+    /// Submit the held task with the user-confirmed model and reasoning effort.
+    AutoRouteConfirmed {
+        request_id: Uuid,
+        thread_id: Option<ThreadId>,
+        model: String,
+        effort: ReasoningEffort,
+    },
+    /// Restore a held task to the composer after routing is cancelled.
+    AutoRouteCancelled {
+        request_id: Uuid,
+        thread_id: Option<ThreadId>,
     },
 
     /// Apply a model and effort only to the active session, preserving saved defaults.

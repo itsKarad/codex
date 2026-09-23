@@ -317,6 +317,7 @@ use crate::text_formatting::truncate_text;
 use crate::tui::FrameRequester;
 mod activity_groups;
 mod activity_presentation;
+mod autoroute;
 mod command_lifecycle;
 mod connector_mentions;
 mod connectors;
@@ -343,6 +344,7 @@ use self::ide_context::IdeContextState;
 mod input_queue;
 mod reconnect;
 use self::input_queue::InputQueueState;
+mod autoroute_settings;
 mod image_submission;
 mod input_flow;
 mod input_restore;
@@ -605,6 +607,7 @@ pub(crate) struct ChatWidget {
     /// Remote app servers cannot read image paths on the TUI host.
     pub(crate) snapshot_local_images: bool,
     pending_image_submission: Option<image_submission::PendingImageSubmission>,
+    pending_auto_route: Option<autoroute::PendingAutoRoute>,
     pub(crate) local_worktree_operations: bool,
     pub(crate) windows_sandbox_local_server: bool,
     pub(crate) windows_sandbox_config: crate::windows_sandbox::WindowsSandboxConfig,

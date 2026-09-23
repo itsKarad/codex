@@ -232,6 +232,10 @@ fn next_goal_draft(
 
 mod app_server;
 mod approval_requests;
+#[path = "tests/autoroute_settings_tests.rs"]
+mod autoroute_settings_tests;
+#[path = "tests/autoroute_tests.rs"]
+mod autoroute_tests;
 #[path = "tests/backend_banners_tests.rs"]
 mod backend_banners_tests;
 #[path = "tests/bedrock_catalog_tests.rs"]

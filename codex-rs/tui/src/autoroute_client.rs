@@ -167,12 +167,7 @@ fn build_model_request(
     let choices = routing
         .candidates
         .iter()
-        .map(|candidate| {
-            (
-                candidate.slug.clone(),
-                candidate_description(candidate),
-            )
-        })
+        .map(|candidate| (candidate.slug.clone(), candidate_description(candidate)))
         .collect::<BTreeMap<_, _>>();
     let state = routing_state(routing);
     let request = serde_json::json!({
@@ -206,9 +201,7 @@ fn build_effort_request(
         })
         .collect::<BTreeMap<_, _>>();
     if choices.is_empty() {
-        return Err(AutoRouteError::NoSupportedEfforts(
-            candidate.slug.clone(),
-        ));
+        return Err(AutoRouteError::NoSupportedEfforts(candidate.slug.clone()));
     }
     let mut state = routing_state(routing);
     state["selected_model"] = serde_json::json!({
@@ -355,10 +348,7 @@ fn validate_model_choice<'a>(
         .ok_or_else(|| AutoRouteError::UnknownModel(choice.to_string()))
 }
 
-fn validate_effort_choice(
-    candidate: &ModelCandidate,
-    effort: &str,
-) -> Result<(), AutoRouteError> {
+fn validate_effort_choice(candidate: &ModelCandidate, effort: &str) -> Result<(), AutoRouteError> {
     if candidate
         .supported_efforts
         .iter()

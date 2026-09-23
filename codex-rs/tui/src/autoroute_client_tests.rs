@@ -2,6 +2,10 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 
 use super::*;
+use codex_http_client::ClientRouteClass;
+use codex_http_client::HttpClientFactory;
+use codex_http_client::OutboundProxyPolicy;
+use codex_http_client::RouteAwareClientPool;
 
 fn candidate(slug: &str) -> ModelCandidate {
     ModelCandidate {
@@ -223,7 +227,11 @@ fn routing_inputs_are_bounded_and_jev_model_has_a_default() {
     let request = build_model_request("jev", &routing).expect("bounded request");
 
     assert_eq!(
-        request["state"]["task"].as_str().expect("task").chars().count(),
+        request["state"]["task"]
+            .as_str()
+            .expect("task")
+            .chars()
+            .count(),
         MAX_TASK_CHARS
     );
     assert_eq!(
@@ -234,4 +242,27 @@ fn routing_inputs_are_bounded_and_jev_model_has_a_default() {
             .count(),
         MAX_HISTORY_CHARS
     );
+}
+
+#[tokio::test]
+async fn missing_api_key_is_rejected_before_sending_a_request() {
+    let client = RouteAwareClientPool::new(
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        ClientRouteClass::Other,
+    );
+    let attachments = [];
+    let candidates = vec![candidate("gpt-6-sol")];
+    let routing = routing_request(
+        "Fix a bug",
+        None,
+        &attachments,
+        &candidates,
+        RoutingMode::CostEffective,
+    );
+
+    let error = recommend_route(&client, None, "jev", &routing)
+        .await
+        .expect_err("missing credentials must fail before networking");
+
+    assert!(matches!(error, AutoRouteError::MissingApiKey));
 }

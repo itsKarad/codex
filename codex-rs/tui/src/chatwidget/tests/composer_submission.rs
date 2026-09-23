@@ -1030,12 +1030,14 @@ async fn blocked_image_restore_preserves_mention_bindings() {
         path: "/tmp/skills/file/SKILL.md".to_string(),
     }];
 
+    let model = chat.current_model().to_string();
     chat.restore_blocked_image_submission(
         text.clone(),
         text_elements,
         local_images.clone(),
         mention_bindings.clone(),
         Vec::new(),
+        &model,
     );
 
     let mention_start = text.find("$file").expect("mention token exists");
@@ -1095,12 +1097,14 @@ async fn blocked_image_restore_with_remote_images_keeps_local_placeholder_mappin
     ];
     let remote_image_urls = vec!["https://example.com/blocked-remote.png".to_string()];
 
+    let model = chat.current_model().to_string();
     chat.restore_blocked_image_submission(
         text.clone(),
         text_elements.clone(),
         local_images.clone(),
         Vec::new(),
         remote_image_urls.clone(),
+        &model,
     );
 
     assert_eq!(chat.bottom_pane.composer_text(), text);
@@ -1832,6 +1836,7 @@ async fn restore_thread_input_state_applies_running_state_policy() {
         plan_mode_reasoning_effort: chat.config.plan_mode_reasoning_effort.clone(),
         task_running: true,
         agent_turn_running: true,
+        pending_auto_route: None,
     };
     chat.restore_thread_input_state(
         Some(input_state.clone()),
