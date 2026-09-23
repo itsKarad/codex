@@ -66,6 +66,7 @@ use codex_config::types::ToolSuggestDisabledTool;
 use codex_config::types::ToolSuggestDiscoverableType;
 use codex_config::types::Tui;
 use codex_config::types::TuiKeymap;
+use codex_config::types::AutoRouteMode;
 use codex_config::types::TuiNotificationSettings;
 use codex_config::types::TuiPetAnchor;
 use codex_config::types::WindowsSandboxModeToml;
@@ -1258,6 +1259,7 @@ fn config_toml_deserializes_model_availability_nux() {
             show_tooltips: true,
             show_server_version_notice: true,
             auto_recap: true,
+            auto_route: AutoRouteMode::Off,
             disable_paste_burst: None,
             vim_mode_default: false,
             question_esc_back: true,
@@ -4397,6 +4399,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
             show_tooltips: true,
             show_server_version_notice: true,
             auto_recap: true,
+            auto_route: AutoRouteMode::Off,
             disable_paste_burst: None,
             vim_mode_default: false,
             question_esc_back: true,

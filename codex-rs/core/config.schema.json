@@ -405,6 +405,32 @@
       },
       "type": "object"
     },
+    "AutoRouteMode": {
+      "description": "TUI preference for selecting a model with Jev before each new task.",
+      "oneOf": [
+        {
+          "description": "Do not use Jev to select a model.",
+          "enum": [
+            "off"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Prefer the least expensive model Jev considers capable of the task.",
+          "enum": [
+            "cost-effective"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Prefer the strongest model Jev considers suitable for the task.",
+          "enum": [
+            "strongest-fit"
+          ],
+          "type": "string"
+        }
+      ]
+    },
     "AwsAuthRefreshConfig": {
       "additionalProperties": false,
       "description": "Command used to refresh AWS credentials for a model provider.",
@@ -4235,6 +4261,15 @@
           "default": true,
           "description": "Generate automatic conversation recaps when the terminal is unfocused. Defaults to `true`. Disabling this leaves `/recap` available on demand.",
           "type": "boolean"
+        },
+        "auto_route": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AutoRouteMode"
+            }
+          ],
+          "default": "off",
+          "description": "Choose a model with Jev before each new task. Defaults to off."
         },
         "disable_paste_burst": {
           "description": "When true, disables burst-paste detection for typed input entirely. All characters are inserted as they are received, and no buffering or placeholder replacement will occur for fast keypress bursts. Overrides the legacy top-level `disable_paste_burst` setting. Defaults to `false`.",

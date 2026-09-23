@@ -89,6 +89,35 @@ impl fmt::Display for SessionPickerViewMode {
     }
 }
 
+/// TUI preference for selecting a model with Jev before each new task.
+#[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum AutoRouteMode {
+    /// Do not use Jev to select a model.
+    #[default]
+    Off,
+    /// Prefer the least expensive model Jev considers capable of the task.
+    CostEffective,
+    /// Prefer the strongest model Jev considers suitable for the task.
+    StrongestFit,
+}
+
+impl AutoRouteMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::CostEffective => "cost-effective",
+            Self::StrongestFit => "strongest-fit",
+        }
+    }
+}
+
+impl fmt::Display for AutoRouteMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Working directory to use when resuming or forking a session.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -746,6 +775,10 @@ pub const DEFAULT_TERMINAL_RESIZE_REFLOW_FALLBACK_MAX_ROWS: usize = 1_000;
 pub struct Tui {
     #[serde(default, flatten)]
     pub notification_settings: TuiNotificationSettings,
+
+    /// Choose a model with Jev before each new task. Defaults to off.
+    #[serde(default)]
+    pub auto_route: AutoRouteMode,
 
     /// Enable animations (welcome screen, shimmer effects, spinners).
     /// Defaults to `true`.
