@@ -57,9 +57,9 @@ use codex_config::types::Notice;
 use codex_config::types::NotificationCondition;
 use codex_config::types::NotificationMethod;
 use codex_config::types::Notifications;
-use codex_config::types::RedactedString;
 use codex_config::types::OtelConfigToml;
 use codex_config::types::OtelExporterKind;
+use codex_config::types::RedactedString;
 use codex_config::types::ResumeCwdMode;
 use codex_config::types::SandboxWorkspaceWrite;
 use codex_config::types::SessionPickerViewMode;
@@ -1291,10 +1291,9 @@ fn config_toml_deserializes_model_availability_nux() {
 #[test]
 fn jev_openrouter_api_key_loads_from_tui_config_and_is_redacted_in_debug() {
     let api_key = "test-openrouter-api-key";
-    let parsed = toml::from_str::<ConfigToml>(&format!(
-        "[tui]\njev_openrouter_api_key = {api_key:?}\n"
-    ))
-    .expect("AutoRoute API key should deserialize from config.toml");
+    let parsed =
+        toml::from_str::<ConfigToml>(&format!("[tui]\njev_openrouter_api_key = {api_key:?}\n"))
+            .expect("AutoRoute API key should deserialize from config.toml");
     let tui = parsed.tui.expect("TUI config should deserialize");
     let configured_api_key = tui
         .jev_openrouter_api_key
@@ -1303,9 +1302,11 @@ fn jev_openrouter_api_key_loads_from_tui_config_and_is_redacted_in_debug() {
 
     assert_eq!(configured_api_key.as_str(), api_key);
     assert_eq!(format!("{configured_api_key:?}"), "<redacted>");
-    assert!(toml::to_string(&tui)
-        .expect("TUI config should serialize")
-        .contains(api_key));
+    assert!(
+        toml::to_string(&tui)
+            .expect("TUI config should serialize")
+            .contains(api_key)
+    );
 }
 
 #[tokio::test]

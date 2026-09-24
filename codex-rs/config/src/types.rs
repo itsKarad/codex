@@ -27,10 +27,10 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 
+pub use codex_utils_redacted_string::RedactedString;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
-pub use codex_utils_redacted_string::RedactedString;
 
 pub use crate::tui_effects::TuiEffects;
 pub use crate::tui_keymap::KeybindingSpec;
