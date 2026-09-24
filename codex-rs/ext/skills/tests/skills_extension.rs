@@ -2659,6 +2659,7 @@ fn skills_extension_config(config: &TestConfig) -> SkillsExtensionConfig {
         cloud_skill_enabled: config.cloud_skill_enabled,
         shadow_selection_enabled: config.shadow_selection_enabled,
         jev_skill_selection_enabled: false,
+        jev_openrouter_api_key: None,
     }
 }
 

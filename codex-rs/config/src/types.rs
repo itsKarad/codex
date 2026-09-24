@@ -30,6 +30,7 @@ use std::fmt;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
+pub use codex_utils_redacted_string::RedactedString;
 
 pub use crate::tui_effects::TuiEffects;
 pub use crate::tui_keymap::KeybindingSpec;
@@ -779,6 +780,10 @@ pub struct Tui {
     /// Choose a model with Jev before each new task. Defaults to off.
     #[serde(default)]
     pub auto_route: AutoRouteMode,
+
+    /// OpenRouter API key for Jev features. This key is read only from config.toml.
+    #[serde(default)]
+    pub jev_openrouter_api_key: Option<RedactedString>,
 
     /// Enable animations (welcome screen, shimmer effects, spinners).
     /// Defaults to `true`.

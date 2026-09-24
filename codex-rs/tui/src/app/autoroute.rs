@@ -19,6 +19,7 @@ use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::TurnItemsView;
 use codex_app_server_protocol::UserInput;
 use codex_config::types::AutoRouteMode;
+use codex_config::types::RedactedString;
 use codex_http_client::RouteAwareClientPool;
 use codex_protocol::ThreadId;
 use codex_protocol::models::MessagePhase;
@@ -28,6 +29,7 @@ pub(super) struct AutoRouteRequest {
     pub(super) request_id: Uuid,
     pub(super) thread_id: Option<ThreadId>,
     pub(super) mode: AutoRouteMode,
+    pub(super) api_key: Option<RedactedString>,
     pub(super) task: String,
     pub(super) attachments: Vec<AttachmentMetadata>,
     pub(super) candidates: Vec<ModelCandidate>,
@@ -48,7 +50,6 @@ pub(super) fn start_request(
         } else {
             None
         };
-        let api_key = std::env::var("OPENROUTER_API_KEY").ok();
         let jev_model =
             jev_model_from_configured_value(std::env::var("OPENROUTER_MODEL").ok().as_deref());
         let mode = match request.mode {
@@ -70,7 +71,8 @@ pub(super) fn start_request(
             attachments: &request.attachments,
             candidates: &request.candidates,
         };
-        let result = recommend_route(&client, api_key.as_deref(), &jev_model, &routing_request)
+        let api_key = request.api_key.as_ref().map(|api_key| api_key.as_str());
+        let result = recommend_route(&client, api_key, &jev_model, &routing_request)
             .await
             .map_err(|error| error.to_string());
         events.send(AppEvent::AutoRouteResolved {

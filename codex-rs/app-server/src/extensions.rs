@@ -125,6 +125,7 @@ pub(crate) fn thread_extensions(
             jev_skill_selection_enabled: config
                 .features
                 .enabled(codex_features::Feature::JevSkillSelection),
+            jev_openrouter_api_key: config.tui_jev_openrouter_api_key.clone(),
         },
     );
     Arc::new(builder.build())

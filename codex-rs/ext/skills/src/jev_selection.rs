@@ -47,7 +47,7 @@ pub(crate) struct JevSkillSuggestion {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum JevSkillSelectionError {
-    #[error("OPENROUTER_API_KEY is not set")]
+    #[error("tui.jev_openrouter_api_key is not set in config.toml")]
     MissingApiKey,
     #[error("Jev skill-selection request exceeds the supported size")]
     RequestTooLarge,

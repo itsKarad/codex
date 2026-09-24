@@ -2326,6 +2326,7 @@ impl App {
                         request_id,
                         thread_id,
                         mode,
+                        api_key: self.config.tui_jev_openrouter_api_key.clone(),
                         task,
                         attachments,
                         candidates,

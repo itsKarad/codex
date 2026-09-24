@@ -78,7 +78,7 @@ pub(crate) struct RouteRecommendation {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AutoRouteError {
-    #[error("OPENROUTER_API_KEY is not set")]
+    #[error("tui.jev_openrouter_api_key is not set in config.toml")]
     MissingApiKey,
     #[error("no available models were provided to Jev")]
     NoCandidates,

@@ -39,6 +39,7 @@ async fn yielded_skill_read_keeps_originating_turn_metadata() -> Result<()> {
             cloud_skill_enabled: true,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
+            jev_openrouter_api_key: None,
         },
     );
     let chatgpt_base_url = server.uri();

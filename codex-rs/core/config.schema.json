@@ -914,6 +914,9 @@
             "item_ids": {
               "type": "boolean"
             },
+            "jev_skill_selection": {
+              "type": "boolean"
+            },
             "js_repl": {
               "type": "boolean"
             },
@@ -4296,6 +4299,11 @@
           "description": "Own the fullscreen transcript, including scrolling, selection, and search. Defaults to `true`; alternate-screen restrictions take precedence.",
           "type": "boolean"
         },
+        "jev_openrouter_api_key": {
+          "default": null,
+          "description": "OpenRouter API key for Jev features. This key is read only from config.toml.",
+          "type": "string"
+        },
         "keymap": {
           "allOf": [
             {
@@ -6820,6 +6828,9 @@
           "type": "boolean"
         },
         "item_ids": {
+          "type": "boolean"
+        },
+        "jev_skill_selection": {
           "type": "boolean"
         },
         "js_repl": {

@@ -88,11 +88,16 @@ async fn auto_route_confirmation_submits_only_after_selection() {
 #[tokio::test]
 async fn auto_route_failure_offers_current_model_and_effort_for_confirmation() {
     let (mut chat, mut events, id, model, effort) = ready_for_confirmation().await;
-    chat.on_auto_route_resolved(id, Err("OPENROUTER_API_KEY is not set".to_string()));
+    chat.on_auto_route_resolved(
+        id,
+        Err("tui.jev_openrouter_api_key is not set in config.toml".to_string()),
+    );
 
     let picker = render_bottom_popup(&chat, /*width*/ 100);
     assert!(picker.contains("Jev unavailable · current model and effort"));
-    assert!(picker.contains("Jev could not route this task (OPENROUTER_API_KEY is not set)"));
+    assert!(picker.contains(
+        "Jev could not route this task (tui.jev_openrouter_api_key is not set in config.toml)"
+    ));
 
     chat.handle_key_event(KeyCode::Enter.into());
     assert!(matches!(

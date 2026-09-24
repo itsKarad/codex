@@ -1612,6 +1612,7 @@ async fn new_context_tool_skips_auto_compact_fallback() -> Result<()> {
         cloud_skill_enabled: config.cloud_skill_enabled,
         shadow_selection_enabled: config.features.enabled(Feature::SkillSearch),
         jev_skill_selection_enabled: false,
+        jev_openrouter_api_key: None,
     });
     let test = test_codex()
         .with_extensions(Arc::new(extensions.build()))

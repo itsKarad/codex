@@ -777,6 +777,9 @@ pub struct Config {
     /// Choose a model with Jev before each new TUI task.
     pub tui_auto_route: AutoRouteMode,
 
+    /// OpenRouter API key for Jev features, loaded from `[tui].jev_openrouter_api_key`.
+    pub tui_jev_openrouter_api_key: Option<codex_config::types::RedactedString>,
+
     /// Persisted startup availability NUX state for model tooltips.
     pub model_availability_nux: ModelAvailabilityNuxConfig,
 
@@ -4458,6 +4461,10 @@ impl Config {
                 .as_ref()
                 .map(|t| t.auto_route)
                 .unwrap_or_default(),
+            tui_jev_openrouter_api_key: cfg
+                .tui
+                .as_ref()
+                .and_then(|t| t.jev_openrouter_api_key.clone()),
             model_availability_nux: cfg
                 .tui
                 .as_ref()

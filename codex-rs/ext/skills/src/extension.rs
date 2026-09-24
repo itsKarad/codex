@@ -424,12 +424,15 @@ where
                 if !has_explicit_skill_selection(&input.user_input, &expanded_catalog.entries)
                     && selected_entries.is_empty()
                 {
-                    let api_key = std::env::var("OPENROUTER_API_KEY").ok();
                     let model = std::env::var("OPENROUTER_MODEL").ok();
+                    let api_key = config
+                        .jev_openrouter_api_key
+                        .as_ref()
+                        .map(|api_key| api_key.as_str());
                     let result = if let Some(selector) = self.jev_skill_selector.as_ref() {
                         selector
                             .suggest(
-                                api_key.as_deref(),
+                                api_key,
                                 Some(configured_model(model.as_deref())),
                                 &task_context,
                                 &expanded_catalog.entries,

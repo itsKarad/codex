@@ -2058,6 +2058,7 @@ async fn run_debug_prompt_input_command(
             jev_skill_selection_enabled: config
                 .features
                 .enabled(codex_features::Feature::JevSkillSelection),
+            jev_openrouter_api_key: config.tui_jev_openrouter_api_key.clone(),
         },
     );
     let prompt_input = codex_core::build_prompt_input(

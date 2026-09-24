@@ -67,6 +67,7 @@ fn state() -> SkillsThreadState {
             cloud_skill_enabled: true,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
+            jev_openrouter_api_key: None,
         },
         /*cloud_skills_available*/ true,
     )
