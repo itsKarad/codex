@@ -51,6 +51,51 @@ async fn ready_for_confirmation() -> (
 }
 
 #[tokio::test]
+async fn auto_route_status_line_hides_default_model_until_a_route_is_chosen() {
+    let (mut chat, _events, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.local_settings.tui.status_line = Some(vec!["model-with-reasoning".to_string()]);
+    chat.set_reasoning_effort(Some(ReasoningEffortConfig::XHigh));
+    chat.set_auto_route_mode(AutoRouteMode::CostEffective);
+
+    insta::assert_snapshot!(status_line_text(&chat).expect("status line"), @"autoroute");
+
+    let request_id = uuid::Uuid::new_v4();
+    chat.pending_auto_route = Some(PendingAutoRoute {
+        request_id,
+        user_message: UserMessage::from("held task"),
+        history_record: UserMessageHistoryRecord::UserMessageText,
+        source: UserMessageSource::Prompt,
+        shell_escape_policy: ShellEscapePolicy::Allow,
+        mode: AutoRouteMode::CostEffective,
+        recommendation: None,
+        failure: None,
+    });
+    chat.on_auto_route_resolved(
+        request_id,
+        Ok(crate::autoroute_client::RouteRecommendation {
+            model: "gpt-5.5".to_string(),
+            effort: "low".to_string(),
+        }),
+    );
+
+    insta::assert_snapshot!(
+        status_line_text(&chat).expect("status line"),
+        @"autoroute(gpt-5.5)"
+    );
+
+    chat.submit_confirmed_auto_route(
+        request_id,
+        "gpt-5.5".to_string(),
+        ReasoningEffortConfig::Low,
+    );
+
+    assert_eq!(
+        status_line_text(&chat),
+        Some("autoroute(gpt-5.5)".to_string())
+    );
+}
+
+#[tokio::test]
 async fn auto_route_confirmation_picker_shows_jev_choice_and_cancel_restores_task() {
     let (mut chat, mut events, id, _model, _effort) = ready_for_confirmation().await;
     insta::assert_snapshot!(render_bottom_popup(&chat, /*width*/ 80));

@@ -46,6 +46,7 @@ impl ChatWidget {
         source: UserMessageSource,
     ) {
         let mode = self.local_settings.tui.auto_route;
+        self.auto_route_status_model = None;
         let pending = PendingAutoRoute {
             request_id: uuid::Uuid::new_v4(),
             user_message,
@@ -63,6 +64,7 @@ impl ChatWidget {
             /*hint*/ None,
         );
         self.refresh_pending_input_preview();
+        self.refresh_status_line();
         self.request_redraw();
     }
 
@@ -133,6 +135,7 @@ impl ChatWidget {
                 pending.failure = Some(error);
             }
         }
+        self.refresh_status_line();
         self.show_auto_route_confirmation(request_id);
     }
 
@@ -145,6 +148,7 @@ impl ChatWidget {
         };
         self.restore_user_message_to_composer(pending.user_message);
         self.refresh_pending_input_preview();
+        self.refresh_status_line();
         self.request_redraw();
     }
 
@@ -166,6 +170,8 @@ impl ChatWidget {
         else {
             return;
         };
+        self.auto_route_status_model = Some(model.clone());
+        self.refresh_status_line();
         self.submit_auto_routed_user_message(
             pending.user_message,
             pending.history_record,

@@ -16,6 +16,7 @@ use crate::status::format_tokens_compact;
 use codex_app_server_protocol::AskForApproval;
 use codex_config::ConfigLayerSource;
 use codex_config::os_host_name;
+use codex_config::types::AutoRouteMode;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::models::PermissionProfile;
@@ -711,8 +712,14 @@ impl ChatWidget {
     /// git metadata.
     pub(super) fn status_line_value(&mut self, item: StatusLineItem) -> Option<String> {
         match item {
-            StatusLineItem::ModelName => Some(self.model_display_name().to_string()),
-            StatusLineItem::ModelWithReasoning => Some(self.model_with_reasoning_display_name()),
+            StatusLineItem::ModelName => Some(
+                self.auto_route_status_model_display_name()
+                    .unwrap_or_else(|| self.model_display_name().to_string()),
+            ),
+            StatusLineItem::ModelWithReasoning => Some(
+                self.auto_route_status_model_display_name()
+                    .unwrap_or_else(|| self.model_with_reasoning_display_name()),
+            ),
             StatusLineItem::Reasoning => Some(self.reasoning_display_name()),
             StatusLineItem::CurrentDir => {
                 Some(format_directory_display(
@@ -827,6 +834,22 @@ impl ChatWidget {
             StatusLineItem::WorkspaceHeadline => self.status_line_workspace_headline.clone(),
             StatusLineItem::TaskProgress => self.terminal_title_task_progress(),
         }
+    }
+
+    fn auto_route_status_model_display_name(&self) -> Option<String> {
+        if self.local_settings.tui.auto_route == AutoRouteMode::Off {
+            return None;
+        }
+        let selected_model = self
+            .pending_auto_route
+            .as_ref()
+            .and_then(|pending| pending.recommendation.as_ref())
+            .map(|recommendation| recommendation.model.as_str())
+            .or(self.auto_route_status_model.as_deref());
+        Some(match selected_model {
+            Some(model) => format!("autoroute({model})"),
+            None => "autoroute".to_string(),
+        })
     }
 
     fn status_line_pull_request_url(&self) -> Option<String> {

@@ -608,6 +608,7 @@ pub(crate) struct ChatWidget {
     pub(crate) snapshot_local_images: bool,
     pending_image_submission: Option<image_submission::PendingImageSubmission>,
     pending_auto_route: Option<autoroute::PendingAutoRoute>,
+    auto_route_status_model: Option<String>,
     pub(crate) local_worktree_operations: bool,
     pub(crate) windows_sandbox_local_server: bool,
     pub(crate) windows_sandbox_config: crate::windows_sandbox::WindowsSandboxConfig,

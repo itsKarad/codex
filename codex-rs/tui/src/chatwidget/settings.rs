@@ -7,8 +7,12 @@ use codex_config::types::AutoRouteMode;
 
 impl ChatWidget {
     pub(crate) fn set_auto_route_mode(&mut self, mode: AutoRouteMode) {
+        if self.local_settings.tui.auto_route != mode {
+            self.auto_route_status_model = None;
+        }
         self.local_settings.tui.auto_route = mode;
         self.config.tui_auto_route = mode;
+        self.refresh_status_line();
     }
 
     /// Set the approval policy in the widget's config copy.
