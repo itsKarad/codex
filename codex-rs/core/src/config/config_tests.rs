@@ -42,6 +42,7 @@ use codex_config::permissions_toml::PermissionsToml;
 use codex_config::permissions_toml::WorkspaceRootsToml;
 use codex_config::types::AppToolApproval;
 use codex_config::types::ApprovalsReviewer;
+use codex_config::types::AutoRouteMode;
 use codex_config::types::BundledSkillsConfig;
 use codex_config::types::FeedbackConfigToml;
 use codex_config::types::HistoryPersistence;
@@ -58,6 +59,7 @@ use codex_config::types::NotificationMethod;
 use codex_config::types::Notifications;
 use codex_config::types::OtelConfigToml;
 use codex_config::types::OtelExporterKind;
+use codex_config::types::RedactedString;
 use codex_config::types::ResumeCwdMode;
 use codex_config::types::SandboxWorkspaceWrite;
 use codex_config::types::SessionPickerViewMode;
@@ -1258,6 +1260,8 @@ fn config_toml_deserializes_model_availability_nux() {
             show_tooltips: true,
             show_server_version_notice: true,
             auto_recap: true,
+            auto_route: AutoRouteMode::Off,
+            jev_openrouter_api_key: None,
             disable_paste_burst: None,
             vim_mode_default: false,
             question_esc_back: true,
@@ -1282,6 +1286,53 @@ fn config_toml_deserializes_model_availability_nux() {
             terminal_resize_reflow_max_rows: None,
         }
     );
+}
+
+#[test]
+fn jev_openrouter_api_key_loads_from_tui_config_and_is_redacted_in_debug() {
+    let api_key = "test-openrouter-api-key";
+    let parsed =
+        toml::from_str::<ConfigToml>(&format!("[tui]\njev_openrouter_api_key = {api_key:?}\n"))
+            .expect("AutoRoute API key should deserialize from config.toml");
+    let tui = parsed.tui.expect("TUI config should deserialize");
+    let configured_api_key = tui
+        .jev_openrouter_api_key
+        .as_ref()
+        .expect("AutoRoute API key should be configured");
+
+    assert_eq!(configured_api_key.as_str(), api_key);
+    assert_eq!(format!("{configured_api_key:?}"), "<redacted>");
+    assert!(
+        toml::to_string(&tui)
+            .expect("TUI config should serialize")
+            .contains(api_key)
+    );
+}
+
+#[tokio::test]
+async fn runtime_config_exposes_jev_openrouter_api_key() -> anyhow::Result<()> {
+    let api_key = "test-openrouter-api-key";
+    let config = Config::load_from_base_config_with_overrides(
+        ConfigToml {
+            tui: Some(Tui {
+                jev_openrouter_api_key: Some(RedactedString::from(api_key)),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        ConfigOverrides::default(),
+        tempdir()?.abs(),
+    )
+    .await?;
+
+    assert_eq!(
+        config
+            .tui_jev_openrouter_api_key
+            .as_ref()
+            .map(|api_key| api_key.as_str()),
+        Some(api_key)
+    );
+    Ok(())
 }
 
 #[test]
@@ -4397,6 +4448,8 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
             show_tooltips: true,
             show_server_version_notice: true,
             auto_recap: true,
+            auto_route: AutoRouteMode::Off,
+            jev_openrouter_api_key: None,
             disable_paste_burst: None,
             vim_mode_default: false,
             question_esc_back: true,

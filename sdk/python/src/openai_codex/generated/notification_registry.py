@@ -51,6 +51,7 @@ from .v2_all import ReasoningSummaryTextDeltaNotification
 from .v2_all import ReasoningTextDeltaNotification
 from .v2_all import RemoteControlStatusChangedNotification
 from .v2_all import ServerRequestResolvedNotification
+from .v2_all import SkillSuggestionNotification
 from .v2_all import SkillsChangedNotification
 from .v2_all import StrictReviewRequiredNotification
 from .v2_all import TerminalInteractionNotification
@@ -134,6 +135,7 @@ KnownNotificationPayload: TypeAlias = (
     | ReasoningTextDeltaNotification
     | RemoteControlStatusChangedNotification
     | ServerRequestResolvedNotification
+    | SkillSuggestionNotification
     | SkillsChangedNotification
     | StrictReviewRequiredNotification
     | TerminalInteractionNotification
@@ -219,6 +221,7 @@ NOTIFICATION_MODELS: dict[str, type[KnownNotificationPayload]] = {
     "project/changed": ProjectChangedNotification,
     "remoteControl/status/changed": RemoteControlStatusChangedNotification,
     "serverRequest/resolved": ServerRequestResolvedNotification,
+    "skill/suggestion": SkillSuggestionNotification,
     "skills/changed": SkillsChangedNotification,
     "thread/archived": ThreadArchivedNotification,
     "thread/attachment/updated": ThreadAttachmentUpdatedNotification,
@@ -281,6 +284,7 @@ DIRECT_TURN_ID_NOTIFICATION_TYPES: tuple[type[BaseModel], ...] = (
     ReasoningSummaryPartAddedNotification,
     ReasoningSummaryTextDeltaNotification,
     ReasoningTextDeltaNotification,
+    SkillSuggestionNotification,
     StrictReviewRequiredNotification,
     TerminalInteractionNotification,
     ThreadGoalUpdatedNotification,

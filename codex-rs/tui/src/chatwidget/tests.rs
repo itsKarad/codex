@@ -232,6 +232,10 @@ fn next_goal_draft(
 
 mod app_server;
 mod approval_requests;
+#[path = "tests/autoroute_settings_tests.rs"]
+mod autoroute_settings_tests;
+#[path = "tests/autoroute_tests.rs"]
+mod autoroute_tests;
 #[path = "tests/backend_banners_tests.rs"]
 mod backend_banners_tests;
 #[path = "tests/bedrock_catalog_tests.rs"]
@@ -310,6 +314,9 @@ pub(crate) use helpers::make_chatwidget_manual_with_sender;
 pub(crate) use helpers::set_chatgpt_auth;
 pub(crate) use helpers::set_fast_mode_test_catalog;
 pub(super) use helpers::*;
+
+#[path = "protocol_tests.rs"]
+mod protocol_tests;
 
 #[path = "tests/questions_tests.rs"]
 mod questions_tests;

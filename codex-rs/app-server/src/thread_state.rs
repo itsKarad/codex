@@ -70,6 +70,12 @@ pub(crate) enum ThreadListenerCommand {
     },
     // EmitThreadQueueChanged orders durable queue updates with thread notifications.
     EmitThreadQueueChanged,
+    // EmitSkillSuggestion orders Jev's turn status with thread notifications.
+    EmitSkillSuggestion {
+        turn_id: String,
+        status: codex_extension_api::ExtensionSkillSuggestionStatus,
+        suggestions: Vec<codex_extension_api::ExtensionSkillSuggestionItem>,
+    },
     // EmitWarning is used to order extension warnings with other thread notifications.
     EmitWarning {
         message: String,

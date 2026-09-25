@@ -66,17 +66,46 @@ pub(crate) fn collect_explicit_skill_mentions(
             if blocked_plain_names.contains(name) {
                 continue;
             }
-            if let Some(entry) = catalog
-                .entries
-                .iter()
-                .find(|entry| entry.enabled && entry.name == name)
-            {
+            if let Some(entry) = explicit_entry_by_name(catalog, name) {
                 push_selected(entry, &mut seen, &mut selected);
             }
         }
     }
 
     selected
+}
+
+pub(crate) fn entry_matches_explicit_name(entry: &SkillCatalogEntry, name: &str) -> bool {
+    entry.name == name
+        || entry.canonical_skill_id.as_deref() == Some(name)
+        || entry
+            .name
+            .rsplit_once(':')
+            .is_some_and(|(_, short_name)| short_name == name)
+}
+
+fn explicit_entry_by_name<'a>(
+    catalog: &'a SkillCatalog,
+    name: &str,
+) -> Option<&'a SkillCatalogEntry> {
+    let exact = catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.enabled && entry.name == name)
+        .collect::<Vec<_>>();
+    if exact.len() == 1 {
+        return exact.first().copied();
+    }
+    if !exact.is_empty() {
+        return None;
+    }
+
+    let mut aliases = catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.enabled && entry_matches_explicit_name(entry, name));
+    let entry = aliases.next()?;
+    aliases.next().is_none().then_some(entry)
 }
 
 fn select_by_path(
@@ -124,6 +153,10 @@ fn path_is_skill(path: &str) -> bool {
 fn normalize_skill_path(path: &str) -> &str {
     path.strip_prefix(SKILL_PATH_PREFIX).unwrap_or(path)
 }
+
+#[cfg(test)]
+#[path = "selection_tests.rs"]
+mod tests;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct SkillCatalogEntryKey {

@@ -40,6 +40,7 @@ use codex_config::sandbox_mode_requirement_for_permission_profile;
 use codex_config::types::ApprovalsReviewer;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_config::types::AuthKeyringBackendKind;
+use codex_config::types::AutoRouteMode;
 use codex_config::types::History;
 use codex_config::types::McpServerConfig;
 use codex_config::types::McpServerDisabledReason;
@@ -772,6 +773,12 @@ pub struct Config {
 
     /// Generate automatic TUI recaps. Manual `/recap` remains available when disabled.
     pub tui_auto_recap: bool,
+
+    /// Choose a model with Jev before each new TUI task.
+    pub tui_auto_route: AutoRouteMode,
+
+    /// OpenRouter API key for Jev features, loaded from `[tui].jev_openrouter_api_key`.
+    pub tui_jev_openrouter_api_key: Option<codex_config::types::RedactedString>,
 
     /// Persisted startup availability NUX state for model tooltips.
     pub model_availability_nux: ModelAvailabilityNuxConfig,
@@ -4449,6 +4456,15 @@ impl Config {
                 .map(|t| t.show_server_version_notice)
                 .unwrap_or(true),
             tui_auto_recap: cfg.tui.as_ref().map(|t| t.auto_recap).unwrap_or(/*default*/ true),
+            tui_auto_route: cfg
+                .tui
+                .as_ref()
+                .map(|t| t.auto_route)
+                .unwrap_or_default(),
+            tui_jev_openrouter_api_key: cfg
+                .tui
+                .as_ref()
+                .and_then(|t| t.jev_openrouter_api_key.clone()),
             model_availability_nux: cfg
                 .tui
                 .as_ref()

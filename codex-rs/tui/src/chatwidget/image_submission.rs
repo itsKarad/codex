@@ -16,6 +16,7 @@ pub(super) struct PendingImageSubmission {
     pub(super) message: UserMessage,
     history_record: UserMessageHistoryRecord,
     source: UserMessageSource,
+    route_override: Option<super::autoroute::AutoRouteTurnOverride>,
     result: oneshot::Receiver<Result<Vec<UserInput>, String>>,
 }
 
@@ -25,6 +26,7 @@ impl ChatWidget {
         message: UserMessage,
         history_record: UserMessageHistoryRecord,
         source: UserMessageSource,
+        route_override: Option<super::autoroute::AutoRouteTurnOverride>,
     ) {
         let id = uuid::Uuid::new_v4();
         let images = message.local_images.clone();
@@ -52,6 +54,7 @@ impl ChatWidget {
             message,
             history_record,
             source,
+            route_override,
             result,
         });
         self.refresh_pending_input_preview();
@@ -71,12 +74,13 @@ impl ChatWidget {
             .unwrap_or_else(|error| Err(format!("Failed to prepare images: {error}")))
         {
             Ok(images) => {
-                let (accepted, _) = self.submit_user_message_with_prepared_images(
+                let (accepted, _) = self.submit_user_message_with_prepared_images_and_route(
                     pending.message,
                     pending.history_record,
                     ShellEscapePolicy::Disallow,
                     pending.source,
                     Some(images),
+                    pending.route_override,
                 );
                 if !accepted {
                     self.input_queue.recovered_queue |=

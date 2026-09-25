@@ -3,8 +3,18 @@
 use super::*;
 use crate::app_event::AppEvent;
 use crate::chatwidget::rate_limits::RATE_LIMIT_SWITCH_PROMPT_VIEW_ID;
+use codex_config::types::AutoRouteMode;
 
 impl ChatWidget {
+    pub(crate) fn set_auto_route_mode(&mut self, mode: AutoRouteMode) {
+        if self.local_settings.tui.auto_route != mode {
+            self.auto_route_status_model = None;
+        }
+        self.local_settings.tui.auto_route = mode;
+        self.config.tui_auto_route = mode;
+        self.refresh_status_line();
+    }
+
     /// Set the approval policy in the widget's config copy.
     pub(crate) fn set_approval_policy(&mut self, policy: AskForApproval) {
         if let Err(err) = self
@@ -310,7 +320,10 @@ impl ChatWidget {
     /// We intentionally default to `true` when model metadata cannot be read so transient catalog
     /// failures do not hard-block user input in the UI.
     pub(super) fn current_model_supports_images(&self) -> bool {
-        let model = self.current_model();
+        self.model_supports_images(self.current_model())
+    }
+
+    pub(super) fn model_supports_images(&self, model: &str) -> bool {
         self.model_catalog
             .try_list_models()
             .ok()
@@ -329,10 +342,11 @@ impl ChatWidget {
     }
 
     pub(super) fn image_inputs_not_supported_message(&self) -> String {
-        format!(
-            "Model {} does not support image inputs. Remove images or switch models.",
-            self.current_model()
-        )
+        self.image_inputs_not_supported_message_for(self.current_model())
+    }
+
+    pub(super) fn image_inputs_not_supported_message_for(&self, model: &str) -> String {
+        format!("Model {model} does not support image inputs. Remove images or switch models.")
     }
 
     pub(crate) fn current_collaboration_mode(&self) -> &CollaborationMode {
@@ -527,6 +541,9 @@ impl ChatWidget {
     pub(crate) fn set_effective_collaboration_mode(&mut self, mode: CollaborationMode) {
         let mode_kind = mode.mode;
         let settings = mode.settings;
+        if mode_kind == ModeKind::Plan {
+            self.disable_auto_route_for_plan();
+        }
         if mode_kind == ModeKind::Default {
             self.current_collaboration_mode = CollaborationMode {
                 mode: ModeKind::Default,
@@ -663,6 +680,9 @@ impl ChatWidget {
             mask.reasoning_effort = Some(Some(effort));
         }
         self.active_collaboration_mask = Some(mask);
+        if self.active_mode_kind() == ModeKind::Plan {
+            self.disable_auto_route_for_plan();
+        }
         self.update_collaboration_mode_indicator();
         self.refresh_model_dependent_surfaces();
         let next_mode = self.active_mode_kind();
@@ -686,6 +706,15 @@ impl ChatWidget {
             self.add_info_message(message, /*hint*/ None);
         }
         self.request_redraw();
+    }
+
+    fn disable_auto_route_for_plan(&mut self) {
+        if self.local_settings.tui.auto_route != AutoRouteMode::Off {
+            self.set_auto_route_mode(AutoRouteMode::Off);
+            self.app_event_tx.send(AppEvent::AutoRouteModeSelected {
+                mode: AutoRouteMode::Off,
+            });
+        }
     }
 
     fn submit_collaboration_mode_settings_update(&self) {

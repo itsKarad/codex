@@ -140,6 +140,8 @@ impl ChatWidget {
             remote_connection: None,
             snapshot_local_images: false,
             pending_image_submission: None,
+            pending_auto_route: None,
+            auto_route_status_model: None,
             local_worktree_operations: true,
             windows_sandbox_local_server: false,
             windows_sandbox_config: Default::default(),

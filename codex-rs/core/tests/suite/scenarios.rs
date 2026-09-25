@@ -102,6 +102,8 @@ fn skills_extensions() -> Arc<ExtensionRegistry<Config>> {
         bundled_skills_enabled: config.bundled_skills_enabled(),
         cloud_skill_enabled: config.cloud_skill_enabled,
         shadow_selection_enabled: config.features.enabled(Feature::SkillSearch),
+        jev_skill_selection_enabled: false,
+        jev_openrouter_api_key: None,
     });
     Arc::new(extensions.build())
 }
@@ -606,6 +608,8 @@ async fn astra_omits_disabled_executor_skills_from_model_context() -> Result<()>
             bundled_skills_enabled: false,
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
+            jev_skill_selection_enabled: false,
+            jev_openrouter_api_key: None,
         },
     );
     let mock = mount_sse_sequence(

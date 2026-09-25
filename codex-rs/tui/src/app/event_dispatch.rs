@@ -2307,6 +2307,63 @@ impl App {
                     }
                 }
             }
+            AppEvent::AutoRouteModeSelected { mode } => {
+                self.save_auto_route_mode(mode).await;
+            }
+            AppEvent::AutoRouteRequested {
+                request_id,
+                thread_id,
+                mode,
+                task,
+                attachments,
+                candidates,
+            } => {
+                crate::app::autoroute::start_request(
+                    self.app_event_tx.clone(),
+                    app_server.request_handle(),
+                    self.chat_widget.pet_http_client.clone(),
+                    crate::app::autoroute::AutoRouteRequest {
+                        request_id,
+                        thread_id,
+                        mode,
+                        api_key: self.config.tui_jev_openrouter_api_key.clone(),
+                        task,
+                        attachments,
+                        candidates,
+                    },
+                );
+            }
+            AppEvent::AutoRouteResolved {
+                request_id,
+                thread_id,
+                result,
+            } => {
+                if self.chat_widget.thread_id() == thread_id {
+                    self.chat_widget
+                        .on_auto_route_resolved(request_id, result);
+                }
+            }
+            AppEvent::AutoRouteConfirmed {
+                request_id,
+                thread_id,
+                model,
+                effort,
+            } => {
+                if self.chat_widget.thread_id() == thread_id
+                    && self.chat_widget.is_auto_route_pending(request_id)
+                {
+                    self.chat_widget
+                        .submit_confirmed_auto_route(request_id, model, effort);
+                }
+            }
+            AppEvent::AutoRouteCancelled {
+                request_id,
+                thread_id,
+            } => {
+                if self.chat_widget.thread_id() == thread_id {
+                    self.chat_widget.cancel_auto_route(request_id);
+                }
+            }
             AppEvent::SelectSessionModel { model, effort } => {
                 self.app_event_tx.send(AppEvent::FollowTranscript);
                 self.select_session_model(app_server, model, effort).await;

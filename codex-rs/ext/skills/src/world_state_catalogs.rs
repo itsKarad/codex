@@ -208,8 +208,9 @@ impl<'a> CatalogContext<'a> {
             return CatalogContribution::unavailable();
         };
 
-        let needs_catalog =
-            self.config.include_instructions || self.config.shadow_selection_enabled;
+        let needs_catalog = self.config.include_instructions
+            || self.config.shadow_selection_enabled
+            || self.config.jev_skill_selection_enabled;
         let catalog = if needs_catalog {
             let catalog = self
                 .providers

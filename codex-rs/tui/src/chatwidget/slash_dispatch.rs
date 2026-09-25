@@ -340,6 +340,10 @@ impl ChatWidget {
                 self.open_model_popup();
                 self.defer_input_until_settings_applied();
             }
+            SlashCommand::AutoRoute => {
+                self.show_auto_route_picker();
+                self.defer_input_until_settings_applied();
+            }
             SlashCommand::Plan => {
                 self.apply_plan_slash_command();
             }
@@ -1255,6 +1259,7 @@ impl ChatWidget {
             | SlashCommand::Compact
             | SlashCommand::Review
             | SlashCommand::Model
+            | SlashCommand::AutoRoute
             | SlashCommand::Plan
             | SlashCommand::Goal
             | SlashCommand::Side

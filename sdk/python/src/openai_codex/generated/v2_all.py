@@ -4904,6 +4904,20 @@ class SkillScope(Enum):
     admin = "admin"
 
 
+class SkillSuggestion(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    fit_probability: Annotated[float, Field(alias="fitProbability")]
+    name: str
+
+
+class SkillSuggestionStatus(Enum):
+    suggested = "suggested"
+    no_match = "noMatch"
+    unavailable = "unavailable"
+
+
 class SkillSummary(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -9706,6 +9720,16 @@ class SkillMetadata(BaseModel):
     ] = None
 
 
+class SkillSuggestionNotification(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    status: SkillSuggestionStatus
+    suggestions: list[SkillSuggestion]
+    thread_id: Annotated[str, Field(alias="threadId")]
+    turn_id: Annotated[str, Field(alias="turnId")]
+
+
 class SkillsListEntry(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -11180,6 +11204,23 @@ class ErrorServerNotification(BaseModel):
     ] = None
     method: Annotated[Literal["error"], Field(title="ErrorNotificationMethod")]
     params: ErrorNotification
+
+
+class SkillSuggestionServerNotification(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    emitted_at_ms: Annotated[
+        int | None,
+        Field(
+            alias="emittedAtMs",
+            description="Unix timestamp (in milliseconds) when app-server emitted this notification.",
+        ),
+    ] = None
+    method: Annotated[
+        Literal["skill/suggestion"], Field(title="Skill/suggestionNotificationMethod")
+    ]
+    params: SkillSuggestionNotification
 
 
 class ThreadGoalUpdatedServerNotification(BaseModel):
@@ -12957,6 +12998,7 @@ class ServerNotification(
         | ThreadClosedServerNotification
         | ThreadRevertedServerNotification
         | SkillsChangedServerNotification
+        | SkillSuggestionServerNotification
         | ThreadNameUpdatedServerNotification
         | ThreadAttachmentUpdatedServerNotification
         | ThreadGoalUpdatedServerNotification
@@ -13046,6 +13088,7 @@ class ServerNotification(
         | ThreadClosedServerNotification
         | ThreadRevertedServerNotification
         | SkillsChangedServerNotification
+        | SkillSuggestionServerNotification
         | ThreadNameUpdatedServerNotification
         | ThreadAttachmentUpdatedServerNotification
         | ThreadGoalUpdatedServerNotification
