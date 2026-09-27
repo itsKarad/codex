@@ -1,10 +1,12 @@
-//! High-confidence skill suggestions produced with OpenRouter's Jev Decisions API.
+//! High-confidence skill suggestions from the configured decision model provider.
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::Duration;
 
+use codex_config::DecisionModelsConfig;
+use codex_config::DecisionModelsProvider;
 use codex_http_client::RouteAwareClientPool;
 use codex_protocol::user_input::UserInput;
 use codex_skills::extract_tool_mentions;
@@ -17,9 +19,8 @@ use crate::dynamic_skill_selector::SkillSelectionDocument;
 use crate::dynamic_skill_selector::WeightedLexicalSkillSelector;
 use crate::selection::entry_matches_explicit_name;
 
-const OPENROUTER_DECISIONS_URL: &str = "https://openrouter.ai/api/alpha/decisions";
-const DEFAULT_JEV_MODEL: &str = "~typesafe/jev-latest";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(4);
+const OLLAYA_TOTAL_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 const MAX_TASK_CHARS: usize = 12_000;
 const MAX_RECENT_REQUEST_CHARS: usize = 2_000;
@@ -29,15 +30,16 @@ const MAX_WIDE_CANDIDATES: usize = 48;
 const MAX_SHORTLIST: usize = 12;
 const MAX_SUGGESTIONS: usize = 3;
 const MIN_FIT_PROBABILITY: f64 = 0.85;
+const MAX_ERROR_MESSAGE_CHARS: usize = 256;
 
-/// Bounded user task context used only for Jev skill selection.
+/// Bounded user task context used only for decision-model skill selection.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SkillSuggestionContext {
     pub(crate) request: String,
     pub(crate) recent_requests: Vec<String>,
 }
 
-/// One distinct skill that passed Jev's independent fit check.
+/// One distinct skill that passed the independent fit check.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct JevSkillSuggestion {
     pub(crate) name: String,
@@ -47,8 +49,22 @@ pub(crate) struct JevSkillSuggestion {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum JevSkillSelectionError {
-    #[error("tui.jev_openrouter_api_key is not set in config.toml")]
+    #[error("decision_models.openrouter_api_key is not set in config.toml")]
     MissingApiKey,
+    #[error(
+        "could not reach Ollaya; check decision_models.ollaya_base_url and start it with `ollaya serve`"
+    )]
+    OllayaUnavailable,
+    #[error("Ollaya model `{0}` is not installed; run `ollaya pull {0}`")]
+    OllayaModelNotFound(String),
+    #[error("Ollaya rejected its bearer key; check decision_models.ollaya_api_key")]
+    OllayaUnauthorized,
+    #[error("Ollaya request timed out after 15 seconds")]
+    OllayaTimeout,
+    #[error("Ollaya returned HTTP status {0}")]
+    OllayaHttpStatus(u16),
+    #[error("Ollaya returned an invalid decision response")]
+    OllayaInvalidResponse(#[source] codex_http_client::HttpError),
     #[error("Jev skill-selection request exceeds the supported size")]
     RequestTooLarge,
     #[error("request to OpenRouter failed: {0}")]
@@ -61,78 +77,175 @@ pub(crate) enum JevSkillSelectionError {
     InvalidAnswer(String),
 }
 
+impl JevSkillSelectionError {
+    pub(crate) fn user_message(&self) -> String {
+        let message = self
+            .to_string()
+            .chars()
+            .filter(|character| !character.is_control())
+            .collect::<String>();
+        truncate_chars(&message, MAX_ERROR_MESSAGE_CHARS)
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct JevSkillSelector {
     client: RouteAwareClientPool,
-    endpoint: String,
+    test_endpoint: Option<String>,
 }
 
 impl JevSkillSelector {
     pub(crate) fn new(client: RouteAwareClientPool) -> Self {
         Self {
             client,
-            endpoint: OPENROUTER_DECISIONS_URL.to_string(),
+            test_endpoint: None,
         }
     }
 
     pub(crate) async fn suggest(
         &self,
-        api_key: Option<&str>,
-        model: Option<&str>,
+        decision_models: &DecisionModelsConfig,
+        openrouter_model: Option<&str>,
         context: &SkillSuggestionContext,
         entries: &[SkillCatalogEntry],
+    ) -> Result<Vec<JevSkillSuggestion>, JevSkillSelectionError> {
+        if decision_models.is_local() {
+            tokio::time::timeout(
+                OLLAYA_TOTAL_TIMEOUT,
+                self.suggest_with_timeout(
+                    decision_models,
+                    openrouter_model,
+                    context,
+                    entries,
+                    OLLAYA_TOTAL_TIMEOUT,
+                ),
+            )
+            .await
+            .map_err(|_| JevSkillSelectionError::OllayaTimeout)?
+        } else {
+            self.suggest_with_timeout(
+                decision_models,
+                openrouter_model,
+                context,
+                entries,
+                REQUEST_TIMEOUT,
+            )
+            .await
+        }
+    }
+
+    async fn suggest_with_timeout(
+        &self,
+        decision_models: &DecisionModelsConfig,
+        openrouter_model: Option<&str>,
+        context: &SkillSuggestionContext,
+        entries: &[SkillCatalogEntry],
+        timeout: Duration,
     ) -> Result<Vec<JevSkillSuggestion>, JevSkillSelectionError> {
         let candidates = eligible_candidates(context, entries);
         if candidates.is_empty() {
             return Ok(Vec::new());
         }
-        let api_key = api_key
+        let local = decision_models.provider == DecisionModelsProvider::Ollaya;
+        let api_key = decision_models
+            .api_key()
             .map(str::trim)
-            .filter(|key| !key.trim().is_empty())
-            .ok_or(JevSkillSelectionError::MissingApiKey)?;
-
-        let model = model
-            .map(str::trim)
-            .filter(|model| !model.trim().is_empty())
-            .unwrap_or(DEFAULT_JEV_MODEL);
+            .filter(|key| !key.is_empty());
+        if !local && api_key.is_none() {
+            return Err(JevSkillSelectionError::MissingApiKey);
+        }
+        let endpoint = self
+            .test_endpoint
+            .clone()
+            .unwrap_or_else(|| decision_models.endpoint());
+        let model = decision_models.model(openrouter_model);
         let state = build_state(context, &candidates);
-        let ranking_request = build_ranking_request(model, &state, &candidates)?;
-        let ranking_response = self.send(api_key, &ranking_request).await?;
-        let shortlist = parse_ranking(&ranking_response, &candidates)?;
+        let ranking_request = build_ranking_request(&model, &state, &candidates, local)?;
+        let ranking_response = self
+            .send(
+                decision_models,
+                &endpoint,
+                api_key,
+                &model,
+                &ranking_request,
+                timeout,
+            )
+            .await?;
+        let shortlist = parse_ranking(&ranking_response, &candidates, local)?;
+        if shortlist.is_empty() {
+            return Ok(Vec::new());
+        }
 
         let verification_state = build_state(context, &shortlist);
         let verification_request =
-            build_verification_request(model, &verification_state, &shortlist)?;
-        let verification_response = self.send(api_key, &verification_request).await?;
+            build_verification_request(&model, &verification_state, &shortlist)?;
+        let verification_response = self
+            .send(
+                decision_models,
+                &endpoint,
+                api_key,
+                &model,
+                &verification_request,
+                timeout,
+            )
+            .await?;
         parse_verification(&verification_response, &shortlist)
     }
 
     async fn send(
         &self,
-        api_key: &str,
+        decision_models: &DecisionModelsConfig,
+        endpoint: &str,
+        api_key: Option<&str>,
+        model: &str,
         request: &Value,
+        timeout: Duration,
     ) -> Result<DecisionResponse, JevSkillSelectionError> {
-        let response = self
-            .client
-            .post(&self.endpoint)
-            .bearer_auth(api_key)
-            .timeout(REQUEST_TIMEOUT)
-            .json(request)
-            .send()
-            .await?;
+        let mut builder = self.client.post(endpoint).timeout(timeout).json(request);
+        if let Some(api_key) = api_key {
+            builder = builder.bearer_auth(api_key);
+        }
+        let response = match builder.send().await {
+            Ok(response) => response,
+            Err(_error) if decision_models.is_local() => {
+                return Err(JevSkillSelectionError::OllayaUnavailable);
+            }
+            Err(error) => return Err(JevSkillSelectionError::Request(error)),
+        };
         let status = response.status();
         if !status.is_success() {
+            if decision_models.is_local() {
+                let code = response
+                    .text()
+                    .await
+                    .ok()
+                    .and_then(|body| serde_json::from_str::<Value>(&body).ok())
+                    .and_then(|body| body.get("code").and_then(Value::as_str).map(str::to_string));
+                return match (status.as_u16(), code.as_deref()) {
+                    (401 | 403, _) => Err(JevSkillSelectionError::OllayaUnauthorized),
+                    (404, Some("MODEL_NOT_FOUND")) => Err(
+                        JevSkillSelectionError::OllayaModelNotFound(model.to_string()),
+                    ),
+                    (status, _) => Err(JevSkillSelectionError::OllayaHttpStatus(status)),
+                };
+            }
             return Err(JevSkillSelectionError::HttpStatus(status.as_u16()));
         }
-        response
-            .json::<DecisionResponse>()
-            .await
-            .map_err(JevSkillSelectionError::InvalidResponse)
+        response.json::<DecisionResponse>().await.map_err(|error| {
+            if decision_models.is_local() {
+                JevSkillSelectionError::OllayaInvalidResponse(error)
+            } else {
+                JevSkillSelectionError::InvalidResponse(error)
+            }
+        })
     }
 
     #[cfg(test)]
     fn with_endpoint(client: RouteAwareClientPool, endpoint: String) -> Self {
-        Self { client, endpoint }
+        Self {
+            client,
+            test_endpoint: Some(endpoint),
+        }
     }
 }
 
@@ -158,13 +271,6 @@ struct DecisionAnswer {
     choice: Option<String>,
     probabilities: Option<HashMap<String, f64>>,
     noul: Option<f64>,
-}
-
-pub(crate) fn configured_model(value: Option<&str>) -> &str {
-    value
-        .map(str::trim)
-        .filter(|model| !model.trim().is_empty())
-        .unwrap_or(DEFAULT_JEV_MODEL)
 }
 
 pub(crate) fn substantive_request(inputs: &[UserInput]) -> Option<String> {
@@ -300,20 +406,34 @@ fn build_ranking_request(
     model: &str,
     state: &Value,
     candidates: &[SkillCandidate],
+    include_no_match: bool,
 ) -> Result<Value, JevSkillSelectionError> {
-    let criteria = candidates
+    let mut criteria = candidates
         .iter()
         .map(|candidate| {
             (
                 candidate.key.clone(),
-                serde_json::json!({
-                    "name": candidate.name,
-                    "source": candidate.source,
-                    "description": candidate.description,
-                }),
+                if include_no_match {
+                    serde_json::json!(format!(
+                        "{}; source: {}; description: {}",
+                        candidate.name, candidate.source, candidate.description
+                    ))
+                } else {
+                    serde_json::json!({
+                        "name": candidate.name,
+                        "source": candidate.source,
+                        "description": candidate.description,
+                    })
+                },
             )
         })
         .collect::<BTreeMap<_, _>>();
+    if include_no_match {
+        criteria.insert(
+            "no_match".to_string(),
+            serde_json::json!("No listed skill directly applies to the user's request."),
+        );
+    }
     let request = serde_json::json!({
         "model": model,
         "state": state,
@@ -368,6 +488,7 @@ fn ensure_request_size(request: &Value) -> Result<(), JevSkillSelectionError> {
 fn parse_ranking(
     response: &DecisionResponse,
     candidates: &[SkillCandidate],
+    allow_no_match: bool,
 ) -> Result<Vec<SkillCandidate>, JevSkillSelectionError> {
     let answer = response
         .answers
@@ -377,8 +498,14 @@ fn parse_ranking(
     let choice = answer
         .choice
         .as_deref()
-        .filter(|choice| candidates.iter().any(|candidate| candidate.key == *choice))
+        .filter(|choice| {
+            (allow_no_match && *choice == "no_match")
+                || candidates.iter().any(|candidate| candidate.key == *choice)
+        })
         .ok_or_else(|| JevSkillSelectionError::InvalidAnswer("rank".to_string()))?;
+    if allow_no_match && choice == "no_match" {
+        return Ok(Vec::new());
+    }
     let probabilities = answer
         .probabilities
         .as_ref()
@@ -453,6 +580,7 @@ fn truncate_chars(value: &str, limit: usize) -> String {
     let mut chars = value.chars();
     let mut result = chars.by_ref().take(limit).collect::<String>();
     if chars.next().is_some() {
+        result.pop();
         result.push('…');
     }
     result

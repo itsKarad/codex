@@ -93,7 +93,7 @@ fn skills_extensions() -> Arc<ExtensionRegistry<Config>> {
         cloud_skill_enabled: config.cloud_skill_enabled,
         shadow_selection_enabled: config.features.enabled(Feature::SkillSearch),
         jev_skill_selection_enabled: false,
-        jev_openrouter_api_key: None,
+        decision_models: Default::default(),
     });
     Arc::new(extensions.build())
 }

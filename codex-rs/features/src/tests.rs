@@ -472,6 +472,18 @@ fn telepathy_is_legacy_alias_for_chronicle() {
 }
 
 #[test]
+fn jev_skill_selection_remains_a_legacy_alias_for_decision_skill_selection() {
+    assert_eq!(
+        feature_for_key("decision_skill_selection"),
+        Some(Feature::DecisionSkillSelection)
+    );
+    assert_eq!(
+        feature_for_key("jev_skill_selection"),
+        Some(Feature::DecisionSkillSelection)
+    );
+}
+
+#[test]
 fn collab_is_legacy_alias_for_multi_agent() {
     assert_eq!(feature_for_key("multi_agent"), Some(Feature::Collab));
     assert_eq!(feature_for_key("collab"), Some(Feature::Collab));

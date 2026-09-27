@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::num::NonZeroU64;
 use std::path::Path;
 
+use crate::DecisionModelsConfig;
 use crate::HooksToml;
 use crate::browser_use::BrowserUseConfigToml;
 use crate::computer_use::ComputerUseConfigToml;
@@ -379,6 +380,10 @@ pub struct ConfigToml {
 
     /// Collection of settings that are specific to the TUI.
     pub tui: Option<Tui>,
+
+    /// Provider and credentials shared by decision model features.
+    #[serde(default)]
+    pub decision_models: Option<DecisionModelsConfig>,
 
     /// When set to `true`, `AgentReasoning` events will be hidden from the
     /// UI/output. Defaults to `false`.

@@ -2057,8 +2057,8 @@ async fn run_debug_prompt_input_command(
                 .enabled(codex_features::Feature::SkillSearch),
             jev_skill_selection_enabled: config
                 .features
-                .enabled(codex_features::Feature::JevSkillSelection),
-            jev_openrouter_api_key: config.tui_jev_openrouter_api_key.clone(),
+                .enabled(codex_features::Feature::DecisionSkillSelection),
+            decision_models: config.decision_models.clone(),
         },
     );
     let prompt_input = codex_core::build_prompt_input(

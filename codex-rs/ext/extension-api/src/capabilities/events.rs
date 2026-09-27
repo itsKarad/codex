@@ -11,20 +11,22 @@ pub struct ExtensionWarning {
     pub message: String,
 }
 
-/// Result of the optional Jev skill-selection pass for one turn.
+/// Result of the optional decision-model skill-selection pass for one turn.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtensionSkillSuggestion {
     /// Stable host-owned thread identifier used for delivery.
     pub thread_id: String,
     /// Stable host-owned turn identifier used for correlation.
     pub turn_id: String,
-    /// Whether Jev found any sufficiently relevant skills or could not run.
+    /// Whether the configured decision provider found relevant skills or could not run.
     pub status: ExtensionSkillSuggestionStatus,
+    /// Bounded, sanitized setup hint when the configured provider was unavailable.
+    pub error_message: Option<String>,
     /// Skills above the configured relevance threshold, ordered by fit probability.
     pub suggestions: Vec<ExtensionSkillSuggestionItem>,
 }
 
-/// User-visible state for a Jev skill-selection request.
+/// User-visible state for a decision-provider skill-selection request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExtensionSkillSuggestionStatus {
     Suggested,
@@ -32,7 +34,7 @@ pub enum ExtensionSkillSuggestionStatus {
     Unavailable,
 }
 
-/// One high-confidence skill recommendation from Jev.
+/// One high-confidence skill recommendation from the configured decision provider.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtensionSkillSuggestionItem {
     pub name: String,
@@ -54,7 +56,7 @@ pub trait ExtensionEventSink: Send + Sync {
     /// [`ExtensionWarning::turn_id`] is correlation metadata and does not identify a thread.
     fn emit_warning(&self, warning: ExtensionWarning);
 
-    /// Queue Jev's bounded skill-suggestion status for the current turn.
+    /// Queue bounded skill-suggestion status for the current turn.
     fn emit_skill_suggestion(&self, _suggestion: ExtensionSkillSuggestion) {}
 }
 

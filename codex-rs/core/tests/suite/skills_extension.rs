@@ -9,6 +9,8 @@ use codex_config::ConfigLayerSource;
 use codex_config::ConfigLayerStack;
 use codex_config::ConfigRequirements;
 use codex_config::ConfigRequirementsToml;
+use codex_config::DecisionModelsConfig;
+use codex_config::DecisionModelsProvider;
 use codex_core::StartThreadOptions;
 use codex_core::TurnInputRequest;
 use codex_core::config::Config;
@@ -24,6 +26,8 @@ use codex_extension_api::ExtensionWarning;
 use codex_extension_api::SkillInvocationContributor;
 use codex_extension_api::SkillInvocationInput;
 use codex_features::Feature;
+use codex_http_client::HttpClientFactory;
+use codex_http_client::OutboundProxyPolicy;
 use codex_login::CodexAuth;
 use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_models_manager::bundled_models_response;
@@ -67,6 +71,7 @@ use codex_skills_extension::catalog::SkillSearchResult;
 use codex_skills_extension::catalog::SkillSourceKind;
 use codex_skills_extension::install;
 use codex_skills_extension::install_with_providers;
+use codex_skills_extension::install_with_providers_and_metrics_and_jev_client;
 use codex_skills_extension::provider::SkillListQuery;
 use codex_skills_extension::provider::SkillProviderFuture;
 use codex_skills_extension::provider::SkillReadRequest;
@@ -105,7 +110,12 @@ use toml::toml;
 use tracing::Level;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_test::internal::MockWriter;
+use wiremock::Mock;
 use wiremock::MockServer;
+use wiremock::Request;
+use wiremock::ResponseTemplate;
+use wiremock::matchers::method;
+use wiremock::matchers::path;
 
 #[path = "skills_extension/cloud_skill_tests.rs"]
 mod cloud_skill_tests;
@@ -350,10 +360,111 @@ fn catalog_extensions(
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         }
     });
     (Arc::new(extensions.build()), event_rx)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ollaya_skill_suggestion_is_added_to_the_production_turn_context() -> Result<()> {
+    let server = responses::start_mock_server().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(|request: &Request| {
+            let body: Value = serde_json::from_slice(&request.body).expect("decision request");
+            let answers = if body["questions"].get("rank").is_some() {
+                json!({
+                    "rank": {
+                        "type": "choice",
+                        "choice": "skill_0",
+                        "probabilities": {"skill_0": 0.9, "no_match": 0.1}
+                    }
+                })
+            } else {
+                json!({"fit_skill_0": {"type": "noul", "noul": 0.91}})
+            };
+            ResponseTemplate::new(200).set_body_json(json!({"answers": answers, "usage": {}}))
+        })
+        .expect(2)
+        .mount(&server)
+        .await;
+    let response = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("ollaya-skill-suggestion"),
+            ev_completed("ollaya-skill-suggestion"),
+        ]),
+    )
+    .await;
+
+    let codex_home = Arc::new(TempDir::new()?);
+    let decision_models = DecisionModelsConfig {
+        provider: DecisionModelsProvider::Ollaya,
+        ollaya_base_url: Some(server.uri()),
+        ..Default::default()
+    };
+    let mut extensions = ExtensionRegistryBuilder::<Config>::new();
+    install_with_providers_and_metrics_and_jev_client(
+        &mut extensions,
+        SkillProviders::new().with_executor_provider(Arc::new(CatalogSkillProvider {
+            catalog: executor_catalog(&[("PDF", "Summarize and review PDF documents.")]),
+        })),
+        /*metrics_client*/ None,
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        move |config: &Config| SkillsExtensionConfig {
+            include_instructions: config.include_skill_instructions,
+            max_context_tokens: config.skill_max_context_tokens,
+            bundled_skills_enabled: false,
+            cloud_skill_enabled: false,
+            shadow_selection_enabled: false,
+            jev_skill_selection_enabled: true,
+            decision_models: decision_models.clone(),
+        },
+    );
+    let test = test_codex()
+        .with_home(Arc::clone(&codex_home))
+        .with_extensions(Arc::new(extensions.build()))
+        .with_config(configure_catalog_test)
+        .build_with_auto_env(&server)
+        .await?;
+
+    test.codex
+        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "Summarize this PDF for me".to_string(),
+            text_elements: Vec::new(),
+        }]))
+        .await?;
+    loop {
+        if matches!(
+            wait_for_event(&test.codex, |_| true).await,
+            EventMsg::TurnComplete(_)
+        ) {
+            break;
+        }
+    }
+
+    let developer_texts = response.single_request().message_input_texts("developer");
+    let ollaya_requests = server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|request| request.url.path() == "/v1/systemone")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ollaya_requests.len(),
+        2,
+        "Ollaya requests; developer context: {developer_texts:#?}"
+    );
+    assert!(
+        developer_texts.iter().any(|text| {
+            text.contains("The configured decision provider found high-confidence skill matches")
+                && text.contains("PDF")
+        }),
+        "developer context: {developer_texts:#?}"
+    );
+    Ok(())
 }
 
 async fn wait_for_analytics_events(
@@ -629,7 +740,7 @@ async fn capability_sections_render_in_order_with_host_repo_and_plugin_skills() 
         cloud_skill_enabled: config.cloud_skill_enabled,
         shadow_selection_enabled: config.features.enabled(Feature::SkillSearch),
         jev_skill_selection_enabled: false,
-        jev_openrouter_api_key: None,
+        decision_models: Default::default(),
     });
     let mut builder = test_codex()
         .with_home(Arc::clone(&codex_home))
@@ -1040,7 +1151,7 @@ async fn opted_in_executor_provider_skips_host_discovery_but_injects_discovered_
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         },
     );
     let mut builder = test_codex()
@@ -1268,7 +1379,7 @@ async fn executor_only_provider_preserves_structured_repo_skill_without_discover
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         },
     );
     let mut builder = test_codex()
@@ -1414,7 +1525,7 @@ async fn executor_skill_tool_reads_references_under_current_permissions(
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         },
     );
     let mut builder = test_codex()
@@ -1718,7 +1829,7 @@ async fn explicit_executor_skill_prompt_rejects_oversized_resource() -> Result<(
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         },
     );
     let mut builder = test_codex()
@@ -1950,7 +2061,7 @@ async fn production_turn_aliases_combined_skill_catalogs_under_shared_budget() -
             cloud_skill_enabled: true,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         },
     );
     let mut builder = test_codex()
@@ -2090,7 +2201,7 @@ async fn assert_catalog_model_switch(max_context_tokens: Option<usize>) -> Resul
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         },
     );
     let mut builder = test_codex()
@@ -2530,7 +2641,7 @@ async fn production_turn_uses_provider_host_catalog_and_core_snapshot_injection(
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         },
     );
     let mut builder = apps_enabled_builder(apps_server.chatgpt_base_url)
@@ -2652,7 +2763,7 @@ async fn production_turn_suppresses_only_the_superseded_host_skill_prompt() -> R
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         },
     );
     let mut builder = test_codex()
@@ -2915,7 +3026,7 @@ async fn production_turn_keeps_cloud_world_state_incremental_across_turns() -> R
             cloud_skill_enabled: config.cloud_skill_enabled,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         },
     );
     let mut builder = test_codex()
@@ -3180,7 +3291,7 @@ async fn production_turn_fairly_shortens_extension_catalog_descriptions() -> Res
             cloud_skill_enabled: false,
             shadow_selection_enabled: false,
             jev_skill_selection_enabled: false,
-            jev_openrouter_api_key: None,
+            decision_models: Default::default(),
         },
     );
     let mut builder = test_codex()

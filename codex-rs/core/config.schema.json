@@ -406,24 +406,24 @@
       "type": "object"
     },
     "AutoRouteMode": {
-      "description": "TUI preference for selecting a model with Jev before each new task.",
+      "description": "TUI preference for selecting a model with the configured decision provider before each new task.",
       "oneOf": [
         {
-          "description": "Do not use Jev to select a model.",
+          "description": "Do not use the decision provider to select a model.",
           "enum": [
             "off"
           ],
           "type": "string"
         },
         {
-          "description": "Prefer the least expensive model Jev considers capable of the task.",
+          "description": "Prefer the least expensive model the decision provider considers capable of the task.",
           "enum": [
             "cost-effective"
           ],
           "type": "string"
         },
         {
-          "description": "Prefer the strongest model Jev considers suitable for the task.",
+          "description": "Prefer the strongest model the decision provider considers suitable for the task.",
           "enum": [
             "strongest-fit"
           ],
@@ -810,6 +810,9 @@
               "type": "boolean"
             },
             "daemon_auto_start": {
+              "type": "boolean"
+            },
+            "decision_skill_selection": {
               "type": "boolean"
             },
             "default_mode_request_user_input": {
@@ -1396,6 +1399,61 @@
         "external"
       ],
       "type": "string"
+    },
+    "DecisionModelsConfig": {
+      "additionalProperties": false,
+      "description": "Shared configuration for skill suggestions and TUI autorouting decisions.",
+      "properties": {
+        "ollaya_api_key": {
+          "default": null,
+          "description": "Optional bearer key for an Ollaya server configured with `OLLAYA_API_KEY`.",
+          "type": "string"
+        },
+        "ollaya_base_url": {
+          "default": null,
+          "description": "Root URL of the Ollaya server. Defaults to `http://127.0.0.1:11435`.",
+          "type": "string"
+        },
+        "ollaya_model": {
+          "default": null,
+          "description": "Ollaya model to call. Defaults to `decider:2b` when Ollaya is selected.",
+          "type": "string"
+        },
+        "openrouter_api_key": {
+          "default": null,
+          "description": "OpenRouter API key. Takes precedence over the legacy `tui.jev_openrouter_api_key`.",
+          "type": "string"
+        },
+        "provider": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/DecisionModelsProvider"
+            }
+          ],
+          "default": "openrouter",
+          "description": "Decision service to use. Defaults to OpenRouter to preserve existing behavior."
+        }
+      },
+      "type": "object"
+    },
+    "DecisionModelsProvider": {
+      "description": "Provider used by skill suggestions and TUI autorouting.",
+      "oneOf": [
+        {
+          "description": "Use the hosted OpenRouter Decisions API.",
+          "enum": [
+            "openrouter"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Use a local or user-hosted Ollaya instance.",
+          "enum": [
+            "ollaya"
+          ],
+          "type": "string"
+        }
+      ]
     },
     "ExperimentalRequestUserInput": {
       "additionalProperties": false,
@@ -4272,7 +4330,7 @@
             }
           ],
           "default": "off",
-          "description": "Choose a model with Jev before each new task. Defaults to off."
+          "description": "Choose a model with the configured decision provider before each new task. Defaults to off."
         },
         "disable_paste_burst": {
           "description": "When true, disables burst-paste detection for typed input entirely. All characters are inserted as they are received, and no buffering or placeholder replacement will occur for fast keypress bursts. Overrides the legacy top-level `disable_paste_burst` setting. Defaults to `false`.",
@@ -4301,7 +4359,7 @@
         },
         "jev_openrouter_api_key": {
           "default": null,
-          "description": "OpenRouter API key for Jev features. This key is read only from config.toml.",
+          "description": "Legacy OpenRouter API key for decision features. This key is read only from config.toml.",
           "type": "string"
         },
         "keymap": {
@@ -6545,6 +6603,15 @@
     "computer_use": {
       "$ref": "#/definitions/ComputerUseConfigToml"
     },
+    "decision_models": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/DecisionModelsConfig"
+        }
+      ],
+      "default": null,
+      "description": "Provider and credentials shared by decision model features."
+    },
     "default_permissions": {
       "description": "Default permissions profile to apply. Names starting with `:` refer to built-in profiles; other names are resolved from the `[permissions]` table.",
       "type": "string"
@@ -6726,6 +6793,9 @@
           "type": "boolean"
         },
         "daemon_auto_start": {
+          "type": "boolean"
+        },
+        "decision_skill_selection": {
           "type": "boolean"
         },
         "default_mode_request_user_input": {

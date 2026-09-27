@@ -1,4 +1,4 @@
-//! TUI preference picker for routing each new task through Jev.
+//! TUI preference picker for routing each new task through the configured decision provider.
 
 use super::ChatWidget;
 use crate::app_event::AppEvent;
@@ -10,6 +10,10 @@ use codex_config::types::AutoRouteMode;
 
 impl ChatWidget {
     pub(crate) fn show_auto_route_picker(&mut self) {
+        let provider = match self.local_settings.decision_models.provider {
+            codex_config::DecisionModelsProvider::OpenRouter => "Jev",
+            codex_config::DecisionModelsProvider::Ollaya => "Ollaya",
+        };
         let items = [
             (
                 AutoRouteMode::Off,
@@ -43,7 +47,7 @@ impl ChatWidget {
         self.show_selection_view(SelectionViewParams {
             title: Some("AutoRoute".into()),
             description_layout: SelectionDescriptionLayout::Columns,
-            footer_note: Some("Jev selects a model before each new task.".into()),
+            footer_note: Some(format!("{provider} selects a model before each new task.").into()),
             footer_hint: Some(picker_hint_line_for_keymap(&self.bottom_pane.list_keymap())),
             items,
             ..SelectionViewParams::picker()

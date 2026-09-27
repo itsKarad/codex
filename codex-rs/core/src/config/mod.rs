@@ -15,6 +15,7 @@ use codex_config::ConfigPathContext;
 use codex_config::ConfigRequirements;
 use codex_config::ConfigRequirementsToml;
 use codex_config::ConstrainedWithSource;
+use codex_config::DecisionModelsConfig;
 use codex_config::FeatureRequirementsToml;
 use codex_config::ManagedAuthPolicy;
 use codex_config::McpEnterpriseManagedAuthConfig;
@@ -774,11 +775,14 @@ pub struct Config {
     /// Generate automatic TUI recaps. Manual `/recap` remains available when disabled.
     pub tui_auto_recap: bool,
 
-    /// Choose a model with Jev before each new TUI task.
+    /// Choose a model with the configured decision provider before each new TUI task.
     pub tui_auto_route: AutoRouteMode,
 
-    /// OpenRouter API key for Jev features, loaded from `[tui].jev_openrouter_api_key`.
+    /// Legacy OpenRouter API key, loaded from `[tui].jev_openrouter_api_key`.
     pub tui_jev_openrouter_api_key: Option<codex_config::types::RedactedString>,
+
+    /// Provider and credentials shared by decision model features.
+    pub decision_models: DecisionModelsConfig,
 
     /// Persisted startup availability NUX state for model tooltips.
     pub model_availability_nux: ModelAvailabilityNuxConfig,
@@ -4465,6 +4469,16 @@ impl Config {
                 .tui
                 .as_ref()
                 .and_then(|t| t.jev_openrouter_api_key.clone()),
+            decision_models: {
+                let mut decision_models = cfg.decision_models.unwrap_or_default();
+                if decision_models.openrouter_api_key.is_none() {
+                    decision_models.openrouter_api_key = cfg
+                        .tui
+                        .as_ref()
+                        .and_then(|tui| tui.jev_openrouter_api_key.clone());
+                }
+                decision_models
+            },
             model_availability_nux: cfg
                 .tui
                 .as_ref()

@@ -2,10 +2,22 @@ use pretty_assertions::assert_eq;
 use serde_json::json;
 
 use super::*;
+use codex_config::DecisionModelsConfig;
+use codex_config::DecisionModelsProvider;
+use codex_config::types::RedactedString;
 use codex_http_client::ClientRouteClass;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
 use codex_http_client::RouteAwareClientPool;
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use wiremock::Mock;
+use wiremock::MockServer;
+use wiremock::Request;
+use wiremock::ResponseTemplate;
+use wiremock::matchers::method;
+use wiremock::matchers::path;
 
 fn candidate(slug: &str) -> ModelCandidate {
     ModelCandidate {
@@ -202,15 +214,15 @@ fn response_requires_the_named_choice_answer() {
 }
 
 #[test]
-fn routing_inputs_are_bounded_and_jev_model_has_a_default() {
-    assert_eq!(
-        jev_model_from_configured_value(None),
-        DEFAULT_JEV_MODEL.to_string()
-    );
-    assert_eq!(
-        jev_model_from_configured_value(Some("custom/jev")),
-        "custom/jev".to_string()
-    );
+fn routing_inputs_are_bounded_and_provider_models_have_defaults() {
+    let openrouter = DecisionModelsConfig::default();
+    assert_eq!(openrouter.model(None), "~typesafe/jev-latest");
+    assert_eq!(openrouter.model(Some("custom/jev")), "custom/jev");
+    let ollaya = DecisionModelsConfig {
+        provider: DecisionModelsProvider::Ollaya,
+        ..Default::default()
+    };
+    assert_eq!(ollaya.model(None), "decider:2b");
     assert_eq!(truncate_chars("abcdef", 3), "ab…");
 
     let attachments = [];
@@ -260,9 +272,112 @@ async fn missing_api_key_is_rejected_before_sending_a_request() {
         RoutingMode::CostEffective,
     );
 
-    let error = recommend_route(&client, None, "jev", &routing)
+    let error = recommend_route(&client, &DecisionModelsConfig::default(), None, &routing)
         .await
         .expect_err("missing credentials must fail before networking");
 
     assert!(matches!(error, AutoRouteError::MissingApiKey));
+}
+
+#[tokio::test]
+async fn ollaya_uses_typesafe_endpoint_and_validates_model_and_effort() {
+    let server = MockServer::start().await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed_calls = Arc::clone(&calls);
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(move |request: &Request| {
+            assert_eq!(
+                request.headers.get("authorization").unwrap(),
+                "Bearer local-key"
+            );
+            let body: serde_json::Value =
+                serde_json::from_slice(&request.body).expect("request JSON");
+            assert_eq!(body["model"], "decider:0.8b");
+            let call = observed_calls.fetch_add(1, Ordering::SeqCst);
+            let answer = if call == 0 {
+                json!({"model": {"type": "choice", "choice": "gpt-6-sol"}})
+            } else {
+                json!({"effort": {"type": "choice", "choice": "low"}})
+            };
+            ResponseTemplate::new(200).set_body_json(json!({"answers": answer, "usage": {}}))
+        })
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let client = RouteAwareClientPool::new(
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        ClientRouteClass::Other,
+    );
+    let candidates = vec![candidate("gpt-6-sol")];
+    let attachments = [];
+    let routing = routing_request(
+        "Implement a parser",
+        None,
+        &attachments,
+        &candidates,
+        RoutingMode::CostEffective,
+    );
+    let config = DecisionModelsConfig {
+        provider: DecisionModelsProvider::Ollaya,
+        ollaya_model: Some("decider:0.8b".to_string()),
+        ollaya_base_url: Some(server.uri()),
+        ollaya_api_key: Some(RedactedString::from("local-key")),
+        ..Default::default()
+    };
+
+    let result = recommend_route(&client, &config, None, &routing)
+        .await
+        .expect("local recommendation");
+
+    assert_eq!(
+        result,
+        RouteRecommendation {
+            model: "gpt-6-sol".to_string(),
+            effort: "low".to_string(),
+        }
+    );
+}
+
+#[tokio::test]
+async fn ollaya_missing_model_error_includes_manual_pull_hint() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "code": "MODEL_NOT_FOUND",
+            "error": "model not found"
+        })))
+        .mount(&server)
+        .await;
+
+    let client = RouteAwareClientPool::new(
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        ClientRouteClass::Other,
+    );
+    let candidates = vec![candidate("gpt-6-sol")];
+    let attachments = [];
+    let routing = routing_request(
+        "Implement a parser",
+        None,
+        &attachments,
+        &candidates,
+        RoutingMode::CostEffective,
+    );
+    let config = DecisionModelsConfig {
+        provider: DecisionModelsProvider::Ollaya,
+        ollaya_model: Some("decider:2b".to_string()),
+        ollaya_base_url: Some(server.uri()),
+        ..Default::default()
+    };
+
+    let error = recommend_route(&client, &config, None, &routing)
+        .await
+        .expect_err("missing model should be actionable");
+
+    assert_eq!(
+        error.to_string(),
+        "Ollaya model `decider:2b` is not installed; run `ollaya pull decider:2b`"
+    );
 }

@@ -90,16 +90,16 @@ impl fmt::Display for SessionPickerViewMode {
     }
 }
 
-/// TUI preference for selecting a model with Jev before each new task.
+/// TUI preference for selecting a model with the configured decision provider before each new task.
 #[derive(Serialize, Deserialize, Debug, Default, Copy, Clone, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum AutoRouteMode {
-    /// Do not use Jev to select a model.
+    /// Do not use the decision provider to select a model.
     #[default]
     Off,
-    /// Prefer the least expensive model Jev considers capable of the task.
+    /// Prefer the least expensive model the decision provider considers capable of the task.
     CostEffective,
-    /// Prefer the strongest model Jev considers suitable for the task.
+    /// Prefer the strongest model the decision provider considers suitable for the task.
     StrongestFit,
 }
 
@@ -777,11 +777,11 @@ pub struct Tui {
     #[serde(default, flatten)]
     pub notification_settings: TuiNotificationSettings,
 
-    /// Choose a model with Jev before each new task. Defaults to off.
+    /// Choose a model with the configured decision provider before each new task. Defaults to off.
     #[serde(default)]
     pub auto_route: AutoRouteMode,
 
-    /// OpenRouter API key for Jev features. This key is read only from config.toml.
+    /// Legacy OpenRouter API key for decision features. This key is read only from config.toml.
     #[serde(default)]
     pub jev_openrouter_api_key: Option<RedactedString>,
 

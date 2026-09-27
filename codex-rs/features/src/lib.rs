@@ -308,8 +308,8 @@ pub enum Feature {
     SkillMcpDependencyInstall,
     /// Run cheap skill-search methods in shadow mode and emit experiment metrics.
     SkillSearch,
-    /// Suggest relevant skills with Jev before each substantive turn.
-    JevSkillSelection,
+    /// Suggest relevant skills with the configured decision provider before each substantive turn.
+    DecisionSkillSelection,
     /// Removed compatibility flag for deleted skill env var dependency prompting.
     SkillEnvVarDependencyPrompt,
     /// Enable the unified mention popup used by default in the TUI.
@@ -1587,12 +1587,12 @@ pub const FEATURES: &[FeatureSpec] = &[
         default_enabled: true,
     },
     FeatureSpec {
-        id: Feature::JevSkillSelection,
-        key: "jev_skill_selection",
+        id: Feature::DecisionSkillSelection,
+        key: "decision_skill_selection",
         stage: Stage::Experimental {
-            name: "Jev skill suggestions",
-            menu_description: "Suggest relevant skills for each task using Jev.",
-            announcement: "Jev skill suggestions are experimental and send bounded task text and skill descriptions to OpenRouter.",
+            name: "Decision model skill suggestions",
+            menu_description: "Suggest relevant skills for each task using the configured decision provider.",
+            announcement: "Decision model skill suggestions are experimental and send bounded task text and skill descriptions to the configured decision provider.",
         },
         default_enabled: false,
     },

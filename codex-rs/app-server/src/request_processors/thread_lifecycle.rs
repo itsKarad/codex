@@ -535,6 +535,7 @@ pub(super) async fn handle_thread_listener_command(
             turn_id,
             status,
             suggestions,
+            error_message,
         } => {
             let subscribed_connection_ids = thread_state_manager
                 .subscribed_connection_ids(conversation_id)
@@ -560,6 +561,7 @@ pub(super) async fn handle_thread_listener_command(
                                 SkillSuggestionStatus::Unavailable
                             }
                         },
+                        error_message,
                         suggestions: suggestions
                             .into_iter()
                             .map(|suggestion| SkillSuggestion {

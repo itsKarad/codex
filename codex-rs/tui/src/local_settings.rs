@@ -10,6 +10,7 @@ use crate::legacy_core::config::Config;
 use crate::legacy_core::config::TerminalResizeReflowConfig;
 use crate::legacy_core::config::TerminalResizeReflowMaxRows;
 use crate::transcript_mode::TranscriptMode;
+use codex_config::DecisionModelsConfig;
 use codex_config::types::History;
 use codex_config::types::Notice;
 use codex_config::types::Tui;
@@ -18,6 +19,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LocalSettings {
     pub(crate) tui: Tui,
+    pub(crate) decision_models: DecisionModelsConfig,
     pub(crate) transcript_mode: TranscriptMode,
     pub(crate) history: History,
     pub(crate) notices: Notice,
@@ -54,6 +56,7 @@ impl LocalSettings {
             config.animations
         };
         Self {
+            decision_models: config.decision_models.clone(),
             transcript_mode: TranscriptMode::resolve(
                 config.tui_fullscreen_transcript,
                 config.tui_alternate_screen != codex_config::types::AltScreenMode::Never,

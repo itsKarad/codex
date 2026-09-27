@@ -223,8 +223,14 @@ impl ChatWidget {
             }
             ServerNotification::SkillSuggestion(notification) => {
                 if !from_replay {
+                    let provider = match self.local_settings.decision_models.provider {
+                        codex_config::DecisionModelsProvider::OpenRouter => "Jev",
+                        codex_config::DecisionModelsProvider::Ollaya => "Ollaya",
+                    };
                     let message = skill_suggestion_status_message(
+                        provider,
                         notification.status,
+                        notification.error_message.as_deref(),
                         &notification.suggestions,
                     );
                     self.add_info_message(message, /*hint*/ None);
@@ -674,12 +680,14 @@ impl ChatWidget {
 }
 
 fn skill_suggestion_status_message(
+    provider: &str,
     status: codex_app_server_protocol::SkillSuggestionStatus,
+    error_message: Option<&str>,
     suggestions: &[codex_app_server_protocol::SkillSuggestion],
 ) -> String {
     match status {
         codex_app_server_protocol::SkillSuggestionStatus::Suggested => format!(
-            "Jev suggests skills: {}",
+            "{provider} suggests skills: {}",
             suggestions
                 .iter()
                 .take(3)
@@ -692,10 +700,10 @@ fn skill_suggestion_status_message(
                 .join(", ")
         ),
         codex_app_server_protocol::SkillSuggestionStatus::NoMatch => {
-            "Jev found no high-confidence skill match.".to_string()
+            format!("{provider} found no high-confidence skill match.")
         }
-        codex_app_server_protocol::SkillSuggestionStatus::Unavailable => {
-            "Jev skill suggestions are unavailable.".to_string()
-        }
+        codex_app_server_protocol::SkillSuggestionStatus::Unavailable => error_message
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{provider} skill suggestions are unavailable.")),
     }
 }
