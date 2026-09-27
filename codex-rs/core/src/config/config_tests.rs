@@ -9,6 +9,8 @@ use codex_config::CONFIG_TOML_FILE;
 use codex_config::ConfigLayerEntry;
 use codex_config::ConfigLayerSource;
 use codex_config::ConfigLayerStack;
+use codex_config::DecisionModelsConfig;
+use codex_config::DecisionModelsProvider;
 use codex_config::McpServerCommandMatcher;
 use codex_config::McpServerIdentity;
 use codex_config::McpServerRequirement;
@@ -1331,6 +1333,46 @@ async fn runtime_config_exposes_jev_openrouter_api_key() -> anyhow::Result<()> {
             .as_ref()
             .map(|api_key| api_key.as_str()),
         Some(api_key)
+    );
+    assert_eq!(
+        config
+            .decision_models
+            .openrouter_api_key
+            .as_ref()
+            .map(|api_key| api_key.as_str()),
+        Some(api_key)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn decision_models_config_takes_precedence_over_the_legacy_openrouter_key()
+-> anyhow::Result<()> {
+    let config = Config::load_from_base_config_with_overrides(
+        ConfigToml {
+            tui: Some(Tui {
+                jev_openrouter_api_key: Some(RedactedString::from("legacy-key")),
+                ..Default::default()
+            }),
+            decision_models: Some(DecisionModelsConfig {
+                provider: DecisionModelsProvider::Ollaya,
+                openrouter_api_key: Some(RedactedString::from("new-key")),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        ConfigOverrides::default(),
+        tempdir()?.abs(),
+    )
+    .await?;
+
+    assert_eq!(
+        config
+            .decision_models
+            .openrouter_api_key
+            .as_ref()
+            .map(|api_key| api_key.as_str()),
+        Some("new-key")
     );
     Ok(())
 }
