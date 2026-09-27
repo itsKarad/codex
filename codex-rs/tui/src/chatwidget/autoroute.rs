@@ -1,4 +1,4 @@
-//! Hold new turns for Jev's model and reasoning-effort recommendation.
+//! Hold new turns for a decision provider's model and reasoning-effort recommendation.
 
 use super::*;
 use crate::autoroute_client::AttachmentMetadata;
@@ -7,6 +7,7 @@ use crate::autoroute_client::RouteRecommendation;
 use crate::bottom_pane::SelectionDescriptionLayout;
 use crate::bottom_pane::SelectionItem;
 use crate::bottom_pane::SelectionViewParams;
+use codex_config::DecisionModelsProvider;
 use codex_config::types::AutoRouteMode;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -59,8 +60,9 @@ impl ChatWidget {
         };
         self.pending_auto_route = Some(pending);
         self.send_auto_route_request();
+        let provider = decision_provider_name(self.local_settings.decision_models.provider);
         self.add_info_message(
-            "AutoRoute is asking Jev to choose a model for this turn.".to_string(),
+            format!("AutoRoute is asking {provider} to choose a model for this turn."),
             /*hint*/ None,
         );
         self.refresh_pending_input_preview();
@@ -251,13 +253,14 @@ impl ChatWidget {
                 let selected_effort = effort.parse::<ReasoningEffortConfig>().ok()?;
                 let event_thread_id = self.thread_id;
                 let display_name = candidate.name;
+                let provider = decision_provider_name(self.local_settings.decision_models.provider);
                 Some(SelectionItem {
                     name: format!("{display_name} · {effort}"),
                     description: is_recommended.then(|| {
                         if pending.failure.is_some() {
-                            "Jev unavailable · current model and effort".to_string()
+                            format!("{provider} unavailable · current model and effort")
                         } else {
-                            "Jev's recommendation".to_string()
+                            format!("{provider}'s recommendation")
                         }
                     }),
                     actions: vec![Box::new(move |tx| {
@@ -285,9 +288,10 @@ impl ChatWidget {
             dismiss_on_select: true,
             ..Default::default()
         });
+        let provider = decision_provider_name(self.local_settings.decision_models.provider);
         let error_subtitle = pending.failure.as_ref().map(|error| {
             format!(
-                "Jev could not route this task ({}) · confirm the current model or choose another",
+                "{provider} could not route this task ({}) · confirm the current model or choose another",
                 truncate_error(error)
             )
         });
@@ -357,6 +361,13 @@ impl ChatWidget {
                 .or(default_effort)
                 .unwrap_or_else(|| "medium".to_string()),
         }
+    }
+}
+
+fn decision_provider_name(provider: DecisionModelsProvider) -> &'static str {
+    match provider {
+        DecisionModelsProvider::OpenRouter => "Jev",
+        DecisionModelsProvider::Ollaya => "Ollaya",
     }
 }
 

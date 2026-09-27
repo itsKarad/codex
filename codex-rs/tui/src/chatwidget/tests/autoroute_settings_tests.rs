@@ -29,6 +29,15 @@ async fn auto_route_picker_shows_modes_and_requires_confirmation() {
 }
 
 #[tokio::test]
+async fn auto_route_picker_names_ollaya_as_the_decision_provider() {
+    let (mut chat, _events, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.local_settings.decision_models.provider = codex_config::DecisionModelsProvider::Ollaya;
+    chat.show_auto_route_picker();
+
+    insta::assert_snapshot!(render_bottom_popup(&chat, /*width*/ 80));
+}
+
+#[tokio::test]
 async fn entering_plan_mode_disables_auto_route() {
     let (mut chat, mut events, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
     while events.try_recv().is_ok() {}

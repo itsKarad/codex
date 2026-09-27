@@ -135,13 +135,13 @@ async fn auto_route_failure_offers_current_model_and_effort_for_confirmation() {
     let (mut chat, mut events, id, model, effort) = ready_for_confirmation().await;
     chat.on_auto_route_resolved(
         id,
-        Err("tui.jev_openrouter_api_key is not set in config.toml".to_string()),
+        Err("decision_models.openrouter_api_key is not set in config.toml".to_string()),
     );
 
     let picker = render_bottom_popup(&chat, /*width*/ 100);
     assert!(picker.contains("Jev unavailable · current model and effort"));
     assert!(picker.contains(
-        "Jev could not route this task (tui.jev_openrouter_api_key is not set in config.toml)"
+        "Jev could not route this task (decision_models.openrouter_api_key is not set in config.toml)"
     ));
 
     chat.handle_key_event(KeyCode::Enter.into());
@@ -156,6 +156,18 @@ async fn auto_route_failure_offers_current_model_and_effort_for_confirmation() {
             && selected_model == model
             && selected_effort == effort.parse::<ReasoningEffortConfig>().unwrap()
     ));
+}
+
+#[tokio::test]
+async fn ollaya_route_failure_offers_current_model_with_an_actionable_hint() {
+    let (mut chat, _events, id, _model, _effort) = ready_for_confirmation().await;
+    chat.local_settings.decision_models.provider = codex_config::DecisionModelsProvider::Ollaya;
+    chat.on_auto_route_resolved(
+        id,
+        Err("Ollaya model `decider:2b` is not installed; run `ollaya pull decider:2b`".into()),
+    );
+
+    insta::assert_snapshot!(render_bottom_popup(&chat, /*width*/ 100));
 }
 
 #[tokio::test]

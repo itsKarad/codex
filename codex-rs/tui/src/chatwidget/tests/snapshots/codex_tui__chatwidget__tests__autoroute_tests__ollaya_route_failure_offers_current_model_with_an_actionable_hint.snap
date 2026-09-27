@@ -1,0 +1,20 @@
+---
+source: tui/src/chatwidget/tests/autoroute_tests.rs
+expression: "render_bottom_popup(&chat, 100)"
+---
+  Confirm model for this turn
+  Ollaya could not route this task (Ollaya model `decider:2b` is not installed; run `ollaya pull
+  decider:2b`) · confirm the current model or choose another
+
+
+› 1. GPT-5.6-Sol · low         Ollaya unavailable · current model and effort
+  2. GPT-6-Astra · low
+  3. GPT-6-Astra · medium
+  4. GPT-6-Astra · high
+  5. GPT-6-Astra · xhigh
+  6. GPT-6-Astra · max
+  7. GPT-6-Astra · ultra
+  8. GPT-6-Sol · low
+↓
+  Selecting a model submits the held task.
+  enter select · esc back

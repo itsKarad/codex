@@ -131,7 +131,9 @@ impl SlashCommand {
             SlashCommand::MemoryDrop => "DO NOT USE",
             SlashCommand::MemoryUpdate => "DO NOT USE",
             SlashCommand::Model => "choose what model and reasoning effort to use",
-            SlashCommand::AutoRoute => "choose whether Jev selects a model for each task",
+            SlashCommand::AutoRoute => {
+                "choose whether a decision provider selects a model for each task"
+            }
             SlashCommand::Ide => {
                 "include current selection, open files, and other context from your IDE"
             }

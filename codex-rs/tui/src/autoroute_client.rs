@@ -1,4 +1,4 @@
-//! OpenRouter Decisions API client for the TUI's model routing flow.
+//! Decision provider client for the TUI's model routing flow.
 //!
 //! The caller supplies a route-aware HTTP pool and credentials so this client uses the same
 //! outbound network policy as the rest of the CLI. The API key is never stored in this module.
@@ -6,12 +6,12 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use codex_config::DecisionModelsConfig;
+use codex_config::DecisionModelsProvider;
 use codex_http_client::RouteAwareClientPool;
 use serde::Deserialize;
 use serde_json::Value;
 
-const OPENROUTER_DECISIONS_URL: &str = "https://openrouter.ai/api/alpha/decisions";
-pub(crate) const DEFAULT_JEV_MODEL: &str = "~typesafe/jev-latest";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_TASK_CHARS: usize = 16_000;
 const MAX_HISTORY_CHARS: usize = 4_000;
@@ -22,7 +22,7 @@ const MAX_MODALITIES: usize = 16;
 const MAX_MOD_CHARACTERS: usize = 128;
 const MAX_REQUEST_BYTES: usize = 64 * 1024;
 
-/// The price preference used by the first Jev decision.
+/// The price preference used by the first model-routing decision.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RoutingMode {
     CostEffective,
@@ -69,7 +69,7 @@ pub(crate) struct RoutingRequest<'a> {
     pub(crate) candidates: &'a [ModelCandidate],
 }
 
-/// A validated model and reasoning-effort recommendation from Jev.
+/// A validated model and reasoning-effort recommendation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RouteRecommendation {
     pub(crate) model: String,
@@ -78,15 +78,27 @@ pub(crate) struct RouteRecommendation {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AutoRouteError {
-    #[error("tui.jev_openrouter_api_key is not set in config.toml")]
+    #[error("decision_models.openrouter_api_key is not set in config.toml")]
     MissingApiKey,
-    #[error("no available models were provided to Jev")]
+    #[error(
+        "could not reach Ollaya; check decision_models.ollaya_base_url and start it with `ollaya serve`"
+    )]
+    OllayaUnavailable,
+    #[error("Ollaya model `{0}` is not installed; run `ollaya pull {0}`")]
+    OllayaModelNotFound(String),
+    #[error("Ollaya rejected its bearer key; check decision_models.ollaya_api_key")]
+    OllayaUnauthorized,
+    #[error("Ollaya returned HTTP status {0}")]
+    OllayaHttpStatus(u16),
+    #[error("Ollaya returned an invalid decision response")]
+    OllayaInvalidResponse(#[source] codex_http_client::HttpError),
+    #[error("no available models were provided to the decision provider")]
     NoCandidates,
     #[error("the model catalog contains duplicate model slugs")]
     DuplicateCandidate,
     #[error("the model catalog exceeds the supported size")]
     TooManyCandidates,
-    #[error("Jev request exceeds the 65536-byte size limit")]
+    #[error("decision request exceeds the 65536-byte size limit")]
     RequestTooLarge,
     #[error("request to OpenRouter failed: {0}")]
     Request(#[from] codex_http_client::RouteAwareRequestError),
@@ -94,51 +106,69 @@ pub(crate) enum AutoRouteError {
     HttpStatus(u16),
     #[error("OpenRouter returned an invalid JSON response")]
     InvalidResponse(#[source] codex_http_client::HttpError),
-    #[error("Jev's response did not include a {0} choice")]
+    #[error("decision response did not include a {0} choice")]
     MissingChoice(&'static str),
     #[error("model `{0}` does not expose any supported reasoning efforts")]
     NoSupportedEfforts(String),
-    #[error("Jev selected a model that is not in the active model picker: {0}")]
+    #[error("decision provider selected a model that is not in the active model picker: {0}")]
     UnknownModel(String),
-    #[error("Jev selected unsupported reasoning effort `{effort}` for model `{model}`")]
+    #[error(
+        "decision provider selected unsupported reasoning effort `{effort}` for model `{model}`"
+    )]
     UnsupportedEffort { model: String, effort: String },
 }
 
-/// Uses OpenRouter's Decisions API to select a model and then a supported effort.
+/// Uses the configured decision provider to select a model and supported effort.
 ///
 /// The two choices are deliberately requested in sequence: the effort options in the second
 /// request are taken from the validated model selected in the first response.
 pub(crate) async fn recommend_route(
     client: &RouteAwareClientPool,
-    api_key: Option<&str>,
-    jev_model: &str,
+    decision_models: &DecisionModelsConfig,
+    openrouter_model: Option<&str>,
     request: &RoutingRequest<'_>,
 ) -> Result<RouteRecommendation, AutoRouteError> {
-    let api_key = api_key
-        .filter(|key| !key.trim().is_empty())
-        .ok_or(AutoRouteError::MissingApiKey)?;
+    let local = decision_models.provider == DecisionModelsProvider::Ollaya;
+    let api_key = decision_models
+        .api_key()
+        .filter(|key| !key.trim().is_empty());
+    if !local && api_key.is_none() {
+        return Err(AutoRouteError::MissingApiKey);
+    }
     validate_catalog(request.candidates)?;
 
-    let model_request = build_model_request(jev_model, request)?;
-    let model_choice = send_choice_request(client, api_key, model_request, "model").await?;
-    let model = validate_model_choice(&model_choice, request.candidates)?;
+    let endpoint = decision_models.endpoint();
+    let decision_model = decision_models.model(openrouter_model);
+    let model_request = build_model_request(&decision_model, request)?;
+    let model_choice = send_choice_request(
+        client,
+        decision_models,
+        &endpoint,
+        api_key,
+        &decision_model,
+        model_request,
+        "model",
+    )
+    .await?;
+    let selected_model = validate_model_choice(&model_choice, request.candidates)?;
 
-    let effort_request = build_effort_request(jev_model, request, model)?;
-    let effort = send_choice_request(client, api_key, effort_request, "effort").await?;
-    validate_effort_choice(model, &effort)?;
+    let effort_request = build_effort_request(&decision_model, request, selected_model)?;
+    let effort = send_choice_request(
+        client,
+        decision_models,
+        &endpoint,
+        api_key,
+        &decision_model,
+        effort_request,
+        "effort",
+    )
+    .await?;
+    validate_effort_choice(selected_model, &effort)?;
 
     Ok(RouteRecommendation {
-        model: model.slug.clone(),
+        model: selected_model.slug.clone(),
         effort,
     })
-}
-
-/// Selects the configured Jev model without reading process environment state here.
-pub(crate) fn jev_model_from_configured_value(value: Option<&str>) -> String {
-    value
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(DEFAULT_JEV_MODEL)
-        .to_string()
 }
 
 fn validate_catalog(candidates: &[ModelCandidate]) -> Result<(), AutoRouteError> {
@@ -303,25 +333,53 @@ fn model_pricing(slug: &str) -> Option<(f64, f64)> {
 
 async fn send_choice_request(
     client: &RouteAwareClientPool,
-    api_key: &str,
+    decision_models: &DecisionModelsConfig,
+    endpoint: &str,
+    api_key: Option<&str>,
+    model: &str,
     request: Value,
     question: &'static str,
 ) -> Result<String, AutoRouteError> {
-    let response = client
-        .post(OPENROUTER_DECISIONS_URL)
-        .bearer_auth(api_key)
+    let mut builder = client
+        .post(endpoint)
         .timeout(REQUEST_TIMEOUT)
-        .json(&request)
-        .send()
-        .await?;
+        .json(&request);
+    if let Some(api_key) = api_key {
+        builder = builder.bearer_auth(api_key);
+    }
+    let response = match builder.send().await {
+        Ok(response) => response,
+        Err(_error) if decision_models.is_local() => {
+            return Err(AutoRouteError::OllayaUnavailable);
+        }
+        Err(error) => return Err(AutoRouteError::Request(error)),
+    };
     let status = response.status();
     if !status.is_success() {
+        if decision_models.is_local() {
+            let code = response
+                .text()
+                .await
+                .ok()
+                .and_then(|body| serde_json::from_str::<Value>(&body).ok())
+                .and_then(|body| body.get("code").and_then(Value::as_str).map(str::to_string));
+            return match (status.as_u16(), code.as_deref()) {
+                (401 | 403, _) => Err(AutoRouteError::OllayaUnauthorized),
+                (404, Some("MODEL_NOT_FOUND")) => {
+                    Err(AutoRouteError::OllayaModelNotFound(model.to_string()))
+                }
+                (status, _) => Err(AutoRouteError::OllayaHttpStatus(status)),
+            };
+        }
         return Err(AutoRouteError::HttpStatus(status.as_u16()));
     }
-    let response = response
-        .json::<DecisionResponse>()
-        .await
-        .map_err(AutoRouteError::InvalidResponse)?;
+    let response = response.json::<DecisionResponse>().await.map_err(|error| {
+        if decision_models.is_local() {
+            AutoRouteError::OllayaInvalidResponse(error)
+        } else {
+            AutoRouteError::InvalidResponse(error)
+        }
+    })?;
     parse_choice_answer(&response, question)
 }
 

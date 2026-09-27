@@ -1,4 +1,4 @@
-//! Background work for Jev's model and reasoning-effort decisions.
+//! Background work for decision-provider model and reasoning-effort decisions.
 
 use crate::app_event::AppEvent;
 use crate::app_event_sender::AppEventSender;
@@ -6,7 +6,6 @@ use crate::autoroute_client::AttachmentMetadata;
 use crate::autoroute_client::ModelCandidate;
 use crate::autoroute_client::RoutingMode;
 use crate::autoroute_client::RoutingRequest;
-use crate::autoroute_client::jev_model_from_configured_value;
 use crate::autoroute_client::recommend_route;
 use codex_app_server_client::AppServerRequestHandle;
 use codex_app_server_protocol::ClientRequest;
@@ -18,8 +17,8 @@ use codex_app_server_protocol::ThreadTurnsListResponse;
 use codex_app_server_protocol::Turn;
 use codex_app_server_protocol::TurnItemsView;
 use codex_app_server_protocol::UserInput;
+use codex_config::DecisionModelsConfig;
 use codex_config::types::AutoRouteMode;
-use codex_config::types::RedactedString;
 use codex_http_client::RouteAwareClientPool;
 use codex_protocol::ThreadId;
 use codex_protocol::models::MessagePhase;
@@ -29,7 +28,7 @@ pub(super) struct AutoRouteRequest {
     pub(super) request_id: Uuid,
     pub(super) thread_id: Option<ThreadId>,
     pub(super) mode: AutoRouteMode,
-    pub(super) api_key: Option<RedactedString>,
+    pub(super) decision_models: DecisionModelsConfig,
     pub(super) task: String,
     pub(super) attachments: Vec<AttachmentMetadata>,
     pub(super) candidates: Vec<ModelCandidate>,
@@ -50,8 +49,7 @@ pub(super) fn start_request(
         } else {
             None
         };
-        let jev_model =
-            jev_model_from_configured_value(std::env::var("OPENROUTER_MODEL").ok().as_deref());
+        let openrouter_model = std::env::var("OPENROUTER_MODEL").ok();
         let mode = match request.mode {
             AutoRouteMode::Off => {
                 events.send(AppEvent::AutoRouteResolved {
@@ -71,10 +69,14 @@ pub(super) fn start_request(
             attachments: &request.attachments,
             candidates: &request.candidates,
         };
-        let api_key = request.api_key.as_ref().map(|api_key| api_key.as_str());
-        let result = recommend_route(&client, api_key, &jev_model, &routing_request)
-            .await
-            .map_err(|error| error.to_string());
+        let result = recommend_route(
+            &client,
+            &request.decision_models,
+            openrouter_model.as_deref(),
+            &routing_request,
+        )
+        .await
+        .map_err(|error| error.to_string());
         events.send(AppEvent::AutoRouteResolved {
             request_id: request.request_id,
             thread_id: request.thread_id,
