@@ -1,6 +1,9 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use codex_config::DecisionModelsConfig;
+use codex_config::DecisionModelsProvider;
+use codex_config::types::RedactedString;
 use codex_http_client::ClientRouteClass;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
@@ -13,6 +16,7 @@ use wiremock::Mock;
 use wiremock::MockServer;
 use wiremock::Request;
 use wiremock::ResponseTemplate;
+use wiremock::matchers::header;
 use wiremock::matchers::method;
 use wiremock::matchers::path;
 
@@ -84,6 +88,7 @@ fn filters_disabled_skills_and_applies_ranking_confidence_and_distinct_name_limi
             }
         }})),
         &candidates,
+        false,
     )
     .expect("valid ranking");
     assert_eq!(ranked[0].key, "skill_1");
@@ -142,7 +147,8 @@ fn rejects_malformed_answers_and_bypasses_short_or_explicit_inputs() {
     assert!(
         parse_ranking(
             &response(json!({})),
-            &candidates_for(&[entry("PDF", "pdf")])
+            &candidates_for(&[entry("PDF", "pdf")]),
+            false
         )
         .is_err()
     );
@@ -182,6 +188,20 @@ fn rejects_malformed_answers_and_bypasses_short_or_explicit_inputs() {
 }
 
 #[test]
+fn local_error_hints_are_sanitized_and_bounded() {
+    let control_character = JevSkillSelectionError::OllayaModelNotFound("bad\nmodel".into());
+    assert_eq!(
+        control_character.user_message(),
+        "Ollaya model `badmodel` is not installed; run `ollaya pull badmodel`"
+    );
+
+    let long_model_name = JevSkillSelectionError::OllayaModelNotFound("m".repeat(512));
+    let message = long_model_name.user_message();
+    assert_eq!(message.chars().count(), MAX_ERROR_MESSAGE_CHARS);
+    assert!(message.ends_with('…'));
+}
+
+#[test]
 fn follow_up_history_keeps_two_prior_requests_and_bounds_each_request() {
     let history = SkillSuggestionHistory::default();
     history.context_for_turn("1", "Summarize a PDF");
@@ -202,6 +222,7 @@ async fn selector_sends_bounded_metadata_in_two_passes_and_keeps_only_confident_
     let requests = Arc::new(Mutex::new(Vec::new()));
     let observed = Arc::clone(&requests);
     Mock::given(method("POST"))
+        .and(header("authorization", "Bearer test-key"))
         .and(path("/decisions"))
         .respond_with(move |request: &Request| {
             let body: Value = serde_json::from_slice(&request.body).expect("json request");
@@ -229,7 +250,10 @@ async fn selector_sends_bounded_metadata_in_two_passes_and_keeps_only_confident_
     };
     let suggestions = selector(format!("{}/decisions", server.uri()))
         .suggest(
-            Some("test-key"),
+            &DecisionModelsConfig {
+                openrouter_api_key: Some(RedactedString::from("test-key")),
+                ..Default::default()
+            },
             None,
             &context,
             &[entry("spreadsheets", "sheets"), entry("pdf", "pdf")],
@@ -241,7 +265,7 @@ async fn selector_sends_bounded_metadata_in_two_passes_and_keeps_only_confident_
     assert_eq!(suggestions[0].fit_probability, 0.85);
     let requests = requests.lock().expect("requests lock");
     assert_eq!(requests.len(), 2);
-    assert_eq!(requests[0]["model"], DEFAULT_JEV_MODEL);
+    assert_eq!(requests[0]["model"], "~typesafe/jev-latest");
     assert_eq!(
         requests[0]["state"]["recent_requests"][0],
         "Create a workbook"
@@ -253,6 +277,63 @@ async fn selector_sends_bounded_metadata_in_two_passes_and_keeps_only_confident_
 }
 
 #[tokio::test]
+async fn ollaya_ranking_has_a_no_match_choice_for_a_single_candidate() {
+    let server = MockServer::start().await;
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let observed = Arc::clone(&requests);
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(move |request: &Request| {
+            assert!(request.headers.get("authorization").is_none());
+            let body: Value = serde_json::from_slice(&request.body).expect("json request");
+            observed.lock().expect("requests lock").push(body);
+            ResponseTemplate::new(200).set_body_json(json!({
+                "answers": {
+                    "rank": {"type": "choice", "choice": "no_match"}
+                }
+            }))
+        })
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let selector = JevSkillSelector::new(RouteAwareClientPool::new(
+        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
+        ClientRouteClass::Api,
+    ));
+    let config = DecisionModelsConfig {
+        provider: DecisionModelsProvider::Ollaya,
+        ollaya_base_url: Some(server.uri()),
+        ..Default::default()
+    };
+    let suggestions = selector
+        .suggest(
+            &config,
+            None,
+            &SkillSuggestionContext {
+                request: "Review this request".to_string(),
+                recent_requests: Vec::new(),
+            },
+            &[entry("PDF", "pdf")],
+        )
+        .await
+        .expect("Ollaya no-match response");
+
+    assert!(suggestions.is_empty());
+    let requests = requests.lock().expect("requests lock");
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0]["model"], "decider:2b");
+    assert_eq!(
+        requests[0]["questions"]["rank"]["criteria"]["no_match"],
+        "No listed skill directly applies to the user's request."
+    );
+    assert_eq!(
+        requests[0]["questions"]["rank"]["criteria"]["skill_0"],
+        "PDF; source: host; description: Instructions for PDF."
+    );
+}
+
+#[tokio::test]
 async fn missing_key_malformed_answer_and_network_failure_are_unavailable_errors() {
     let entries = [entry("PDF", "pdf")];
     let context = SkillSuggestionContext {
@@ -261,7 +342,7 @@ async fn missing_key_malformed_answer_and_network_failure_are_unavailable_errors
     };
     assert!(matches!(
         selector("http://127.0.0.1:1/decisions".to_string())
-            .suggest(None, None, &context, &entries)
+            .suggest(&DecisionModelsConfig::default(), None, &context, &entries)
             .await,
         Err(JevSkillSelectionError::MissingApiKey)
     ));
@@ -274,13 +355,29 @@ async fn missing_key_malformed_answer_and_network_failure_are_unavailable_errors
         .await;
     assert!(matches!(
         selector(format!("{}/decisions", server.uri()))
-            .suggest(Some("test-key"), None, &context, &entries)
+            .suggest(
+                &DecisionModelsConfig {
+                    openrouter_api_key: Some(RedactedString::from("test-key")),
+                    ..Default::default()
+                },
+                None,
+                &context,
+                &entries,
+            )
             .await,
         Err(JevSkillSelectionError::InvalidResponse(_))
     ));
     assert!(matches!(
         selector("http://127.0.0.1:1/decisions".to_string())
-            .suggest(Some("test-key"), None, &context, &entries)
+            .suggest(
+                &DecisionModelsConfig {
+                    openrouter_api_key: Some(RedactedString::from("test-key")),
+                    ..Default::default()
+                },
+                None,
+                &context,
+                &entries,
+            )
             .await,
         Err(JevSkillSelectionError::Request(_))
     ));

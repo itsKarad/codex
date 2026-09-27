@@ -52,7 +52,6 @@ use crate::fragments::SkillInstructions;
 use crate::fragments::SkillResourceAccess;
 use crate::fragments::SkillSuggestionsInstructions;
 use crate::jev_selection::JevSkillSelector;
-use crate::jev_selection::configured_model;
 use crate::jev_selection::has_explicit_skill_selection;
 use crate::jev_selection::substantive_request;
 use crate::provider::HostSkillProvider;
@@ -425,34 +424,44 @@ where
                     && selected_entries.is_empty()
                 {
                     let model = std::env::var("OPENROUTER_MODEL").ok();
-                    let api_key = config
-                        .jev_openrouter_api_key
-                        .as_ref()
-                        .map(|api_key| api_key.as_str());
                     let result = if let Some(selector) = self.jev_skill_selector.as_ref() {
                         selector
                             .suggest(
-                                api_key,
-                                Some(configured_model(model.as_deref())),
+                                &config.decision_models,
+                                model.as_deref(),
                                 &task_context,
                                 &expanded_catalog.entries,
                             )
                             .await
                     } else {
-                        Err(crate::jev_selection::JevSkillSelectionError::MissingApiKey)
+                        Err(if config.decision_models.is_local() {
+                            crate::jev_selection::JevSkillSelectionError::OllayaUnavailable
+                        } else {
+                            crate::jev_selection::JevSkillSelectionError::MissingApiKey
+                        })
                     };
-                    let (status, suggestions) = match result {
+                    let (status, suggestions, error_message) = match result {
                         Ok(suggestions) if suggestions.is_empty() => {
-                            (ExtensionSkillSuggestionStatus::NoMatch, Vec::new())
+                            (ExtensionSkillSuggestionStatus::NoMatch, Vec::new(), None)
                         }
-                        Ok(suggestions) => (ExtensionSkillSuggestionStatus::Suggested, suggestions),
-                        Err(_) => (ExtensionSkillSuggestionStatus::Unavailable, Vec::new()),
+                        Ok(suggestions) => {
+                            (ExtensionSkillSuggestionStatus::Suggested, suggestions, None)
+                        }
+                        Err(error) => (
+                            ExtensionSkillSuggestionStatus::Unavailable,
+                            Vec::new(),
+                            config
+                                .decision_models
+                                .is_local()
+                                .then(|| error.user_message()),
+                        ),
                     };
                     self.event_sink
                         .emit_skill_suggestion(ExtensionSkillSuggestion {
                             thread_id: thread_store.level_id().to_string(),
                             turn_id: input.turn_id.clone(),
                             status,
+                            error_message,
                             suggestions: suggestions
                                 .iter()
                                 .map(|suggestion| ExtensionSkillSuggestionItem {

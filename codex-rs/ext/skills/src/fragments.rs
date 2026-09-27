@@ -43,7 +43,7 @@ impl ContextualUserFragment for SkillSuggestionsInstructions {
             .collect::<Vec<_>>()
             .join("\n");
         format!(
-            "\nJev found high-confidence skill matches for this request. Treat these as suggestions and use them only when they fit the user's request:\n{suggestions}\n"
+            "\nThe configured decision provider found high-confidence skill matches for this request. Treat these as suggestions and use them only when they fit the user's request:\n{suggestions}\n"
         )
     }
 }

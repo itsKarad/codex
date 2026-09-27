@@ -124,8 +124,8 @@ pub(crate) fn thread_extensions(
                 .enabled(codex_features::Feature::SkillSearch),
             jev_skill_selection_enabled: config
                 .features
-                .enabled(codex_features::Feature::JevSkillSelection),
-            jev_openrouter_api_key: config.tui_jev_openrouter_api_key.clone(),
+                .enabled(codex_features::Feature::DecisionSkillSelection),
+            decision_models: config.decision_models.clone(),
         },
     );
     Arc::new(builder.build())
@@ -304,7 +304,7 @@ impl ExtensionEventSink for AppServerExtensionEventSink {
 
     fn emit_skill_suggestion(&self, suggestion: ExtensionSkillSuggestion) {
         let Ok(thread_id) = ThreadId::from_string(&suggestion.thread_id) else {
-            tracing::warn!("dropping Jev skill suggestion with an invalid thread id");
+            tracing::warn!("dropping decision-model skill suggestion with an invalid thread id");
             return;
         };
         if let Some(listener_command_tx) = self
@@ -315,11 +315,12 @@ impl ExtensionEventSink for AppServerExtensionEventSink {
                 turn_id: suggestion.turn_id.clone(),
                 status: suggestion.status,
                 suggestions: suggestion.suggestions.clone(),
+                error_message: suggestion.error_message.clone(),
             };
             if listener_command_tx.send(command).is_ok() {
                 return;
             }
-            tracing::warn!("failed to enqueue Jev skill suggestion for {thread_id}");
+            tracing::warn!("failed to enqueue decision-model skill suggestion for {thread_id}");
         }
 
         let outgoing = Arc::clone(&self.outgoing);
@@ -332,6 +333,7 @@ impl ExtensionEventSink for AppServerExtensionEventSink {
                 suggestion.turn_id,
                 suggestion.status,
                 suggestion.suggestions,
+                suggestion.error_message,
             )
             .await;
         });
@@ -345,6 +347,7 @@ async fn send_skill_suggestion(
     turn_id: String,
     status: ExtensionSkillSuggestionStatus,
     suggestions: Vec<codex_extension_api::ExtensionSkillSuggestionItem>,
+    error_message: Option<String>,
 ) {
     let subscribed_connection_ids = thread_state_manager
         .subscribed_connection_ids(thread_id)
@@ -363,6 +366,7 @@ async fn send_skill_suggestion(
                         SkillSuggestionStatus::Unavailable
                     }
                 },
+                error_message,
                 suggestions: suggestions
                     .into_iter()
                     .map(|suggestion| SkillSuggestion {
@@ -414,6 +418,7 @@ mod tests {
             thread_id: thread_id.to_string(),
             turn_id: "turn-jev".to_string(),
             status: ExtensionSkillSuggestionStatus::Suggested,
+            error_message: None,
             suggestions: vec![codex_extension_api::ExtensionSkillSuggestionItem {
                 name: "PDF".to_string(),
                 fit_probability: 0.91,
@@ -439,8 +444,10 @@ mod tests {
                     turn_id,
                     status,
                     suggestions,
+                    error_message,
                 } => {
                     assert_eq!(status, ExtensionSkillSuggestionStatus::Suggested);
+                    assert_eq!(error_message, None);
                     assert_eq!(suggestions[0].fit_probability, 0.91);
                     observed.push(format!("suggestions for {turn_id}"));
                 }
@@ -549,6 +556,60 @@ mod tests {
                 thread_id: Some(thread_id.to_string()),
                 message: "catalog was shortened".to_string(),
             }
+        );
+        assert!(outgoing_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn app_server_event_sink_delivers_skill_suggestion_error_message_to_subscriber() {
+        let (outgoing_tx, mut outgoing_rx) = mpsc::channel(4);
+        let outgoing = Arc::new(OutgoingMessageSender::new(
+            outgoing_tx,
+            AnalyticsEventsClient::disabled(),
+        ));
+        let thread_id = ThreadId::new();
+        let connection_id = ConnectionId(1);
+        let thread_state_manager = ThreadStateManager::new();
+        thread_state_manager
+            .connection_initialized(connection_id, ConnectionCapabilities::default())
+            .await;
+        thread_state_manager
+            .try_ensure_connection_subscribed(
+                thread_id,
+                connection_id,
+                /*experimental_raw_events*/ false,
+            )
+            .await
+            .expect("connection should be subscribed");
+        let sink = app_server_extension_event_sink(outgoing, thread_state_manager);
+
+        sink.emit_skill_suggestion(ExtensionSkillSuggestion {
+            thread_id: thread_id.to_string(),
+            turn_id: "turn-1".to_string(),
+            status: ExtensionSkillSuggestionStatus::Unavailable,
+            error_message: Some(
+                "Ollaya model `decider:2b` is not installed; run `ollaya pull decider:2b`"
+                    .to_string(),
+            ),
+            suggestions: Vec::new(),
+        });
+
+        let envelope = timeout(Duration::from_secs(1), outgoing_rx.recv())
+            .await
+            .expect("timed out waiting for skill suggestion notification")
+            .expect("outgoing channel closed unexpectedly");
+        let OutgoingEnvelope::ToConnection {
+            connection_id: observed_connection_id,
+            message,
+            write_complete_tx: _,
+        } = envelope
+        else {
+            panic!("expected connection-targeted skill suggestion notification");
+        };
+        assert_eq!(observed_connection_id, connection_id);
+        assert_eq!(
+            serde_json::to_value(message).expect("notification should serialize")["params"]["errorMessage"],
+            "Ollaya model `decider:2b` is not installed; run `ollaya pull decider:2b`"
         );
         assert!(outgoing_rx.try_recv().is_err());
     }

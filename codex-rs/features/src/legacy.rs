@@ -46,6 +46,10 @@ const ALIASES: &[Alias] = &[
         feature: Feature::Chronicle,
     },
     Alias {
+        legacy_key: "jev_skill_selection",
+        feature: Feature::DecisionSkillSelection,
+    },
+    Alias {
         legacy_key: "codex_hooks",
         feature: Feature::CodexHooks,
     },

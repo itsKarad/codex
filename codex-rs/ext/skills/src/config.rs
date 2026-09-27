@@ -1,6 +1,6 @@
 use std::num::NonZeroUsize;
 
-use codex_config::types::RedactedString;
+use codex_config::DecisionModelsConfig;
 
 /// Host-supplied configuration used by the skills extension.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -15,8 +15,8 @@ pub struct SkillsExtensionConfig {
     pub cloud_skill_enabled: bool,
     /// Whether cheap skill selectors run in shadow mode without changing prompt contents.
     pub shadow_selection_enabled: bool,
-    /// Whether Jev may suggest high-confidence skills for substantive turns.
+    /// Whether the configured decision provider may suggest skills for substantive turns.
     pub jev_skill_selection_enabled: bool,
-    /// OpenRouter API key for Jev features, loaded from `[tui].jev_openrouter_api_key`.
-    pub jev_openrouter_api_key: Option<RedactedString>,
+    /// Provider settings shared by decision model features.
+    pub decision_models: DecisionModelsConfig,
 }
